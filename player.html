@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lottie Плеер</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="player.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    <script src="https://unpkg.com/mp4box@0.5.2/dist/mp4box.all.min.js" defer></script>
+    <script src="js/player.js" defer></script>
+</head>
+<body>
+<main class="pl-app">
+    <!-- навигация -->
+    <nav class="pl-nav">
+        <a href="optimizer.html" class="pl-back">← Оптимизатор</a>
+        <h1 class="pl-title">
+            Lottie Плеер
+        </h1>
+    </nav>
+    <!-- инструкция -->
+    <section class="pl-howto">
+        <div class="pl-steps-row">
+        <div class="pl-step">
+            <div class="pl-step-num">1</div>
+            <div class="pl-step-text">
+                <strong>optimized.json</strong>
+                <span>скачайте в оптимизаторе</span>
+            </div>
+        </div>
+        <div class="pl-step-arrow">→</div>
+        <div class="pl-step">
+            <div class="pl-step-num">2</div>
+            <div class="pl-step-text">
+                <strong>assets.zip</strong>
+                <span>скачайте в оптимизаторе</span>
+            </div>
+        </div>
+        <div class="pl-step-arrow">→</div>
+        <div class="pl-step">
+            <div class="pl-step-num">3</div>
+            <div class="pl-step-text">
+                <strong>Воспроизвести</strong>
+                <span>смотрите анимацию</span>
+            </div>
+        </div>
+        </div>
+
+    </section>
+
+    <!-- карточка загрузки -->
+    <section class="pl-upload-card">
+        <input type="file" id="jsonInput" accept=".json" hidden>
+        <input type="file" id="zipInput" accept=".zip" hidden>
+
+        <!-- две зоны drag-and-drop -->
+        <div class="pl-zones">
+            <div class="pl-zone" id="zoneJson">
+                <span class="pl-zone-label">JSON файл</span>
+                <span class="pl-zone-hint" id="jsonHint">optimized.json</span>
+                <span class="pl-zone-size" id="jsonSize" style="display:none"></span>
+            </div>
+            <div class="pl-zone" id="zoneZip">
+                <span class="pl-zone-label">ZIP архив</span>
+                <span class="pl-zone-hint" id="zipHint">assets.zip</span>
+                <span class="pl-zone-size" id="zipSize" style="display:none"></span>
+            </div>
+        </div>
+
+        <!-- footer: кнопка + прогресс -->
+        <div class="pl-footer">
+            <button class="pl-play-btn" id="btnPlay" disabled>
+                <span>▶</span> Воспроизвести
+            </button>
+            <div class="pl-footer-mid">
+                <div class="progressBarTrack">
+                    <div class="progressBarFill" id="progressFill"></div>
+                </div>
+                <div class="progressText" id="progressLabel"></div>
+            </div>
+            <span class="pl-status" id="statusText"></span>
+        </div>
+    </section>
+
+    <!-- плеер -->
+    <div class="pl-player-wrap" id="playerWrap">
+        <div id="player"></div>
+        <div class="pl-placeholder" id="playerPlaceholder">
+            <span class="pl-placeholder-icon">▶</span>
+            <span class="pl-placeholder-text">Загрузи файлы и нажми воспроизвести</span>
+        </div>
+    </div>
+
+    <!-- статистика + журнал -->
+    <div class="pl-bottom">
+
+        <div class="pl-card" id="statsSection" style="display:none">
+            <div class="pl-card-title">Статистика декодирования</div>
+            <div class="pl-card-body" id="statsBody"></div>
+        </div>
+
+        <div class="pl-card">
+            <div class="pl-card-title">
+                Журнал декодирования
+                <button id="clearLog">Очистить</button>
+            </div>
+            <div class="pl-log-body" id="logContent"></div>
+        </div>
+    </div>
+</main>
+</body>
+</html>

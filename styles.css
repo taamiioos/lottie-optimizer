@@ -1,0 +1,530 @@
+/* базовый сброс стилей */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* css-переменные темы */
+:root {
+    --primary: #6366f1;
+    --primary-d: #4f46e5;
+    --primary-l: #818cf8;
+    --accent: #10b981;
+    --accent-d: #059669;
+    --success: #10b981;
+    --danger: #ef4444;
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --text-mute: #94a3b8;
+    --text-dim: #64748b;
+}
+
+/* основной фон страницы и шрифт */
+body {
+    font-family: BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: radial-gradient(circle at top, #1e293b, #0f172a 70%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    font-size: 14px;
+}
+
+/* главный контейнер */
+.app {
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 10px;
+}
+
+/* навигационная панель с кнопкой перехода в плеер */
+.nav-bar {
+    display: flex;
+    gap: 16px;
+    justify-content: flex-end;
+    margin: 24px 0 20px;
+    flex-wrap: wrap;
+}
+
+/* кнопка в навбаре */
+.nav-btn {
+    min-width: 180px;
+    padding: 14px 24px;
+    font-size: 1rem;
+    background: var(--bg-card);
+    color: var(--text);
+    text-decoration: none;
+    border-radius: 15px;
+}
+
+/* секция с тремя демо-анимациями */
+.demoSection {
+    margin-bottom: 32px;
+}
+
+/* сетка из трёх демо-слотов в ряд */
+.demoGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+/* один демо-слот */
+.demoSlot {
+    background: linear-gradient(145deg, #1e293b, #1a2433);
+    border: 1px solid #334155;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* заголовок карточки с именем анимации */
+.demoName {
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    background: linear-gradient(90deg, #1f2937, #1e293b);
+    border-bottom: 1px solid #334155;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* две половины рядом — оригинал и оптимизированное */
+.demoPair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: #334155;
+}
+
+/* одна половина */
+.demoCard {
+    background: #1e293b;
+}
+
+/* правая карточка */
+.demoCard:last-child {
+    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.4);
+}
+
+/* подпись над превью */
+.demoLabel {
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    background: #020617;
+}
+
+/* область с канвасом lottie */
+.demoPreview {
+    aspect-ratio: 4/3;
+    background: #020617;
+    position: relative;
+    overflow: hidden;
+}
+
+/* канвас растягиваем на всю область превью */
+.demoPreview canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+}
+
+/* прогресс-бар под каждой анимацией */
+.demoProgress {
+    padding: 10px 14px;
+    background: #0f172a;
+    border-top: 1px solid #334155;
+}
+
+/* фоновая полоска трека */
+.progressBarTrack {
+    height: 6px;
+    background: #1e293b;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+/* заполненная часть */
+.progressBarFill {
+    height: 100%;
+    width: 0;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #6366f1, #818cf8);
+    transition: width 0.4s ease;
+}
+
+/* зелёный когда готово */
+.progressBarFill.done {
+    background: linear-gradient(90deg, #10b981, #059669);
+}
+
+/* красный когда ошибка */
+.progressBarFill.error {
+    background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+/* текст под прогресс-баром */
+.progressText {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 5px;
+    min-height: 14px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* блок статистики под анимацией */
+.demoStats {
+    font-size: 10px;
+    line-height: 1.5;
+    overflow: hidden;
+}
+
+/* внутренние отступы статистики */
+.statsInner {
+    padding: 14px;
+    border-top: 1px solid #334155;
+}
+
+/* три карточки: было / стало / сэкономлено */
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 12px;
+}
+
+/* одна карточка из сетки */
+.statBox {
+    background: linear-gradient(145deg, #1f2937, #1b2433);
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+    transition: transform 0.2s ease;
+}
+
+/* зелёный фон — экономия положительная */
+.statBox.positive {
+    background: #064e3b;
+}
+
+/* красный фон — файл стал тяжелее */
+.statBox.negative {
+    background: #7f1d1d;
+}
+
+/* подпись над цифрой */
+.statLabel {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+}
+
+/* главная цифра в карточке */
+.statValue {
+    font-size: 22px;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+/* мелкий пояснительный текст под цифрой */
+.statDetail {
+    margin-top: 10px;
+    font-size: 10px;
+    color: #64748b;
+}
+
+/* таблица с детальными метриками */
+.statsTable {
+    width: 100%;
+    margin-top: 10px;
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+/* заголовок раздела таблицы */
+.statsTableTitle {
+    font-size: 11px;
+    margin-top: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6366f1;
+    font-weight: 600;
+}
+
+/* ячейки таблицы */
+.statsTable td {
+    padding: 4px 0;
+    border-bottom: 1px solid #334155;
+}
+
+/* левый столбец */
+.statsTable td:first-child {
+    color: #94a3b8;
+}
+
+/* правый столбец */
+.statsTable td:last-child {
+    text-align: right;
+    color: #e2e8f0;
+    font-variant-numeric: tabular-nums;
+}
+
+.statsTable tr:last-child td {
+    border-bottom: none;
+}
+
+/* карточка с деталями одного видео */
+.videoDetailCard {
+    background: #1f2937;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 6px;
+    font-size: 11px;
+}
+
+.videoDetailCard:last-child {
+    margin-bottom: 0;
+}
+
+/* заголовок карточки видео */
+.videoDetailTitle {
+    font-weight: 600;
+    color: #6366f1;
+    margin-bottom: 4px;
+}
+
+/* сетка из пар label + value */
+.videoDetailGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 12px;
+}
+
+.videoDetailGrid span {
+    color: #94a3b8;
+}
+
+.videoDetailGrid strong {
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+/* полоска времени работы, разбитая по фазам */
+.timingBar {
+    display: flex;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #334155;
+    margin: 8px 0 4px;
+}
+
+/* один цветной сегмент на полоске */
+.timingSegment {
+    height: 100%;
+    min-width: 2px;
+}
+
+/* синий — фаза анализа */
+.timingSegment.analysis {
+    background: #3b82f6;
+}
+
+/* индиго — кодирование видео */
+.timingSegment.video {
+    background: #6366f1;
+}
+
+/* оранжевый — обработка картинок */
+.timingSegment.images {
+    background: #f59e0b;
+}
+
+/* зелёный — создание zip */
+.timingSegment.zip {
+    background: #10b981;
+}
+
+/* легенда под полоской с подписями цветов */
+.timingLegend {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: #94a3b8;
+    flex-wrap: wrap;
+}
+
+/* цветная точка перед каждым label в легенде */
+.timingLegend span::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+.timingLegend .tAnalysis::before {
+    background: #3b82f6;
+}
+
+.timingLegend .tVideo::before {
+    background: #6366f1;
+}
+
+.timingLegend .tImages::before {
+    background: #f59e0b;
+}
+
+.timingLegend .tZip::before {
+    background: #10b981;
+}
+
+/* секция для загрузки своего файла */
+.userSection {
+    margin-bottom: 32px;
+}
+
+/* область drag-and-drop для загрузки json */
+.uploadArea {
+    border: 2px dashed #334155;
+    border-radius: 20px;
+    padding: 40px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: rgba(30, 41, 59, 0.4);
+    backdrop-filter: blur(8px);
+}
+
+/* подсвечиваем при наведении */
+.uploadArea:hover {
+    border-color: #6366f1;
+    background: rgba(99, 102, 241, 0.08);
+}
+
+/* иконка внутри зоны загрузки */
+.uploadIcon {
+    font-size: 36px;
+    color: #6366f1;
+    margin-bottom: 8px;
+    font-weight: 300;
+}
+
+/* текст под иконкой */
+.uploadText {
+    font-size: 15px;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+}
+
+/* карточка с результатом обработки пользовательского файла */
+.userSlot {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* строка с кнопками скачивания */
+.userDownloads {
+    display: flex;
+    gap: 8px;
+    padding: 14px;
+    border-top: 1px solid #334155;
+}
+
+/* кнопка скачивания json или zip */
+.dlBtn {
+    flex: 1;
+    padding: 12px;
+    background: #6366f1;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #fff;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.dlBtn:hover {
+    background: #4f46e5;
+    transform: translateY(-1px);
+}
+
+/* секция лога внизу страницы */
+.logSection {
+    background: #0b1220;
+}
+
+/* шапка лога с кнопкой очистки */
+.logHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: #1f2937;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+/* кнопка очистки лога */
+.logHeader button {
+    padding: 4px 12px;
+    background: #334155;
+    border: none;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* контейнер строк лога */
+.logContent {
+    font-family: 'SF Mono', monospace;
+    font-size: 12px;
+}
+
+/* одна строка лога */
+.logLine {
+    color: #94a3b8;
+}
+
+.logLine.success {
+    color: #10b981;
+}
+
+.logLine.warn {
+    color: #fbbf24;
+}
+
+.logLine.error {
+    color: #ef4444;
+}
+
+.logLine.progress {
+    color: #6366f1;
+}
+
+/* жирный синий — начало новой фазы */
+.logLine.phase {
+    color: #3b82f6;
+    font-weight: 600;
+}

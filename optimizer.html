@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Оптимизатор Lottie</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    <script src="https://unpkg.com/mp4box@0.5.2/dist/mp4box.all.min.js" defer></script>
+    <script src="js/image.js" defer></script>
+    <script src="js/video.js" defer></script>
+    <script src="js/optimizer.js" defer></script>
+    <script src="js/app.js" defer></script>
+</head>
+<body>
+<main class="app">
+    <section class="demoSection">
+        <div class="demoGrid" id="demoGrid">
+            <div class="demoSlot" data-index="0">
+                <div class="demoName" data-index="0">Slideshow.json</div>
+                <div class="demoPair">
+                    <div class="demoCard">
+                        <div class="demoLabel">До</div>
+                        <div class="demoPreview" id="demo-before-0"></div>
+                    </div>
+                    <div class="demoCard">
+                        <div class="demoLabel">После</div>
+                        <div class="demoPreview" id="demo-after-0"></div>
+                    </div>
+                </div>
+
+                <div class="demoProgress" id="demo-progress-0">
+                    <div class="progressBarTrack">
+                        <div class="progressBarFill" id="demo-bar-0"></div>
+                    </div>
+                    <div class="progressText" id="demo-text-0"></div>
+                </div>
+
+                <div class="demoStats" id="demo-stats-0"></div>
+            </div>
+            <div class="demoSlot" data-index="1">
+                <div class="demoName" data-index="1">black rainbow cat.json</div>
+
+                <div class="demoPair">
+                    <div class="demoCard">
+                        <div class="demoLabel">До</div>
+                        <div class="demoPreview" id="demo-before-1"></div>
+                    </div>
+                    <div class="demoCard">
+                        <div class="demoLabel">После</div>
+                        <div class="demoPreview" id="demo-after-1"></div>
+                    </div>
+                </div>
+
+                <div class="demoProgress" id="demo-progress-1">
+                    <div class="progressBarTrack">
+                        <div class="progressBarFill" id="demo-bar-1"></div>
+                    </div>
+                    <div class="progressText" id="demo-text-1"></div>
+                </div>
+
+                <div class="demoStats" id="demo-stats-1"></div>
+            </div>
+            <div class="demoSlot" data-index="2">
+                <div class="demoName" data-index="2">lottie with cat.json</div>
+
+                <div class="demoPair">
+                    <div class="demoCard">
+                        <div class="demoLabel">До</div>
+                        <div class="demoPreview" id="demo-before-2"></div>
+                    </div>
+                    <div class="demoCard">
+                        <div class="demoLabel">После</div>
+                        <div class="demoPreview" id="demo-after-2"></div>
+                    </div>
+                </div>
+
+                <div class="demoProgress" id="demo-progress-2">
+                    <div class="progressBarTrack">
+                        <div class="progressBarFill" id="demo-bar-2"></div>
+                    </div>
+                    <div class="progressText" id="demo-text-2"></div>
+                </div>
+
+                <div class="demoStats" id="demo-stats-2"></div>
+            </div>
+
+        </div>
+    </section>
+    <section class="userSection">
+        <div class="uploadArea" id="uploadArea">
+            <input type="file" id="fileInput" accept=".json" hidden>
+            <div class="uploadIcon">+</div>
+            <div class="uploadText">Перетащите .json сюда или нажмите для загрузки</div>
+        </div>
+
+        <div class="userSlot" id="userSlot" style="display:none">
+            <div class="demoName" id="user-name">Ваш файл</div>
+
+            <div class="demoPair">
+                <div class="demoCard wide">
+                    <div class="demoLabel">До</div>
+                    <div class="demoPreview" id="user-before"></div>
+                </div>
+                <div class="demoCard wide">
+                    <div class="demoLabel">После</div>
+                    <div class="demoPreview" id="user-after"></div>
+                </div>
+            </div>
+
+            <div class="demoProgress" id="user-progress">
+                <div class="progressBarTrack">
+                    <div class="progressBarFill" id="user-bar"></div>
+                </div>
+                <div class="progressText" id="user-text"></div>
+            </div>
+
+            <div class="demoStats" id="user-stats"></div>
+
+            <div class="userDownloads" id="userDownloads" style="display:none">
+                <button class="dlBtn" id="dlJson">Скачать JSON</button>
+                <button class="dlBtn" id="dlZip">Скачать ZIP</button>
+            </div>
+        </div>
+    </section>
+    <div class="nav-bar">
+        <a href="player.html" class="nav-btn">Открыть Lottie-плеер</a>
+    </div>
+    <section class="logSection" id="logSection">
+        <div class="logHeader">
+            <span>Журнал обработки</span>
+            <button id="clearLog">Очистить</button>
+        </div>
+        <div class="logContent" id="logContent"></div>
+    </section>
+
+</main>
+</body>
+</html>
