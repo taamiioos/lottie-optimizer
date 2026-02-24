@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Оптимизатор Lottie</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Lottie Optimizer</title>
+    <link rel="stylesheet" href="optimizer.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
     <script src="https://unpkg.com/mp4box@0.5.2/dist/mp4box.all.min.js" defer></script>
@@ -15,8 +15,19 @@
 </head>
 <body>
 <main class="app">
+    <header class="app-header">
+        <div class="app-header-brand">
+            <div class="app-logo">⚡</div>
+            <div>
+                <h1 class="app-title">Lottie Optimizer</h1>
+            </div>
+        </div>
+        <a href="player.html" class="nav-btn">▶&ensp;Открыть плеер</a>
+    </header>
+
     <section class="demoSection">
-        <div class="demoGrid" id="demoGrid">
+        <div class="demoGrid">
+
             <div class="demoSlot" data-index="0">
                 <div class="demoName" data-index="0">Slideshow.json</div>
                 <div class="demoPair">
@@ -29,19 +40,36 @@
                         <div class="demoPreview" id="demo-after-0"></div>
                     </div>
                 </div>
-
-                <div class="demoProgress" id="demo-progress-0">
+                <div class="demoProgress">
                     <div class="progressBarTrack">
                         <div class="progressBarFill" id="demo-bar-0"></div>
                     </div>
                     <div class="progressText" id="demo-text-0"></div>
                 </div>
-
+                <div class="demoControls" id="dctrl-0" style="display:none">
+                    <div class="dCtrlScrubRow">
+                        <span class="dCtrlFrame" id="dctrl-0-frame">—</span>
+                        <input type="range" class="dCtrlScrubber" id="dctrl-0-scrub" min="0" max="100" value="0" step="1">
+                    </div>
+                    <div class="dCtrlRow">
+                        <button class="dCtrlBtn dCtrlStop" id="dctrl-0-stop" title="В начало">■</button>
+                        <button class="dCtrlBtn dCtrlPlay" id="dctrl-0-play">⏸</button>
+                        <div class="dCtrlGap"></div>
+                        <select class="dCtrlSpeed" id="dctrl-0-speed">
+                            <option value="0.5">0.5×</option>
+                            <option value="1" selected>1×</option>
+                            <option value="1.5">1.5×</option>
+                            <option value="2">2×</option>
+                        </select>
+                        <button class="dCtrlBtn dCtrlLoop active" id="dctrl-0-loop">↺</button>
+                    </div>
+                </div>
                 <div class="demoStats" id="demo-stats-0"></div>
+
             </div>
+
             <div class="demoSlot" data-index="1">
                 <div class="demoName" data-index="1">black rainbow cat.json</div>
-
                 <div class="demoPair">
                     <div class="demoCard">
                         <div class="demoLabel">До</div>
@@ -52,19 +80,36 @@
                         <div class="demoPreview" id="demo-after-1"></div>
                     </div>
                 </div>
-
-                <div class="demoProgress" id="demo-progress-1">
+                <div class="demoProgress">
                     <div class="progressBarTrack">
                         <div class="progressBarFill" id="demo-bar-1"></div>
                     </div>
                     <div class="progressText" id="demo-text-1"></div>
                 </div>
-
+                <div class="demoControls" id="dctrl-1" style="display:none">
+                    <div class="dCtrlScrubRow">
+                        <span class="dCtrlFrame" id="dctrl-1-frame">—</span>
+                        <input type="range" class="dCtrlScrubber" id="dctrl-1-scrub" min="0" max="100" value="0" step="1">
+                    </div>
+                    <div class="dCtrlRow">
+                        <button class="dCtrlBtn dCtrlStop" id="dctrl-1-stop" title="В начало">■</button>
+                        <button class="dCtrlBtn dCtrlPlay" id="dctrl-1-play">⏸</button>
+                        <div class="dCtrlGap"></div>
+                        <select class="dCtrlSpeed" id="dctrl-1-speed">
+                            <option value="0.5">0.5×</option>
+                            <option value="1" selected>1×</option>
+                            <option value="1.5">1.5×</option>
+                            <option value="2">2×</option>
+                        </select>
+                        <button class="dCtrlBtn dCtrlLoop active" id="dctrl-1-loop">↺</button>
+                    </div>
+                </div>
                 <div class="demoStats" id="demo-stats-1"></div>
+
             </div>
+
             <div class="demoSlot" data-index="2">
                 <div class="demoName" data-index="2">lottie with cat.json</div>
-
                 <div class="demoPair">
                     <div class="demoCard">
                         <div class="demoLabel">До</div>
@@ -75,20 +120,36 @@
                         <div class="demoPreview" id="demo-after-2"></div>
                     </div>
                 </div>
-
-                <div class="demoProgress" id="demo-progress-2">
+                <div class="demoProgress">
                     <div class="progressBarTrack">
                         <div class="progressBarFill" id="demo-bar-2"></div>
                     </div>
                     <div class="progressText" id="demo-text-2"></div>
                 </div>
-
+                <div class="demoControls" id="dctrl-2" style="display:none">
+                    <div class="dCtrlScrubRow">
+                        <span class="dCtrlFrame" id="dctrl-2-frame">—</span>
+                        <input type="range" class="dCtrlScrubber" id="dctrl-2-scrub" min="0" max="100" value="0" step="1">
+                    </div>
+                    <div class="dCtrlRow">
+                        <button class="dCtrlBtn dCtrlStop" id="dctrl-2-stop" title="В начало">■</button>
+                        <button class="dCtrlBtn dCtrlPlay" id="dctrl-2-play">⏸</button>
+                        <div class="dCtrlGap"></div>
+                        <select class="dCtrlSpeed" id="dctrl-2-speed">
+                            <option value="0.5">0.5×</option>
+                            <option value="1" selected>1×</option>
+                            <option value="1.5">1.5×</option>
+                            <option value="2">2×</option>
+                        </select>
+                        <button class="dCtrlBtn dCtrlLoop active" id="dctrl-2-loop">↺</button>
+                    </div>
+                </div>
                 <div class="demoStats" id="demo-stats-2"></div>
             </div>
 
         </div>
     </section>
-    <section class="userSection">
+    <section class="userSection" id="userSection">
         <div class="uploadArea" id="uploadArea">
             <input type="file" id="fileInput" accept=".json" hidden>
             <div class="uploadIcon">+</div>
@@ -99,39 +160,50 @@
             <div class="demoName" id="user-name">Ваш файл</div>
 
             <div class="demoPair">
-                <div class="demoCard wide">
+                <div class="demoCard">
                     <div class="demoLabel">До</div>
                     <div class="demoPreview" id="user-before"></div>
                 </div>
-                <div class="demoCard wide">
+                <div class="demoCard">
                     <div class="demoLabel">После</div>
                     <div class="demoPreview" id="user-after"></div>
                 </div>
             </div>
 
-            <div class="demoProgress" id="user-progress">
+            <div class="demoProgress">
                 <div class="progressBarTrack">
                     <div class="progressBarFill" id="user-bar"></div>
                 </div>
                 <div class="progressText" id="user-text"></div>
             </div>
-
+            <div class="demoControls" id="dctrl-user" style="display:none">
+                <div class="dCtrlScrubRow">
+                    <span class="dCtrlFrame" id="dctrl-user-frame">—</span>
+                    <input type="range" class="dCtrlScrubber" id="dctrl-user-scrub" min="0" max="100" value="0" step="1">
+                </div>
+                <div class="dCtrlRow">
+                    <button class="dCtrlBtn dCtrlStop" id="dctrl-user-stop" title="В начало">■</button>
+                    <button class="dCtrlBtn dCtrlPlay" id="dctrl-user-play">⏸</button>
+                    <div class="dCtrlGap"></div>
+                    <select class="dCtrlSpeed" id="dctrl-user-speed">
+                        <option value="0.5">0.5×</option>
+                        <option value="1" selected>1×</option>
+                        <option value="1.5">1.5×</option>
+                        <option value="2">2×</option>
+                    </select>
+                    <button class="dCtrlBtn dCtrlLoop active" id="dctrl-user-loop">↺</button>
+                </div>
+            </div>
             <div class="demoStats" id="user-stats"></div>
-
             <div class="userDownloads" id="userDownloads" style="display:none">
-                <button class="dlBtn" id="dlJson">Скачать JSON</button>
-                <button class="dlBtn" id="dlZip">Скачать ZIP</button>
+                <button class="dlBtn" id="dlJson">⬇&ensp;Скачать JSON</button>
+                <button class="dlBtn dlBtn--zip" id="dlZip">⬇&ensp;Скачать ZIP</button>
             </div>
         </div>
     </section>
-    <div class="nav-bar">
-        <a href="player.html" class="nav-btn">Открыть Lottie-плеер</a>
-    </div>
+
+
     <section class="logSection" id="logSection">
-        <div class="logHeader">
-            <span>Журнал обработки</span>
-            <button id="clearLog">Очистить</button>
-        </div>
         <div class="logContent" id="logContent"></div>
     </section>
 

@@ -141,6 +141,7 @@ const Optimizer = {
         const sequences = this.findSequences(assets);
         const videoAssets = [];
         const videoFrameIds = new Set();
+        const videoFrameSeqIndex = new Map(); // id → индекс видео
 
         if (sequences.length > 0) {
             onProgress({
@@ -152,13 +153,14 @@ const Optimizer = {
 
         // кодируем найденные последовательности в mp4
         const videoT0 = performance.now();
+        let videoCounter = 0;
 
         if (convertToVideo && sequences.length > 0) {
             for (let si = 0; si < sequences.length; si++) {
                 const seq = sequences[si];
                 onProgress({
                     phase: 'video',
-                    message: `Видео ${si + 1}/${sequences.length}: ${seq.prefix} (${seq.count} кадров)`,
+                    message: `Видео ${si + 1}/${sequences.length}: ${seq.count} кадров`,
                     percent: 10 + Math.round(si / sequences.length * 40)
                 });
                 const frames = [];
@@ -180,10 +182,10 @@ const Optimizer = {
                 try {
                     const videoResult = await VideoEncoderUtil.encode(frames, {
                         fps: videoFps,
-                        onProgress: (pct, cur, total) => {
+                        onProgress: (pct) => {
                             onProgress({
                                 phase: 'video',
-                                message: `Видео ${si + 1}/${sequences.length}: ${seq.prefix} ${pct}%`,
+                                message: `Видео ${si + 1}/${sequences.length}: ${pct}%`,
                                 percent: 10 + Math.round((si + pct / 100) / sequences.length * 40)
                             });
                         }
@@ -194,16 +196,17 @@ const Optimizer = {
                         stats.videoSkipped++;
                         onProgress({
                             phase: 'video',
-                            message: `${seq.prefix}: видео больше оригиналов, пропускаем`,
+                            message: `Видео ${si + 1}: больше оригиналов, пропускаем`,
                             percent: 10 + Math.round((si + 1) / sequences.length * 40)
                         });
                         continue;
                     }
-                    const videoFile = `video/${seq.prefix}.mp4`;
+
+                    const videoFile = `video/seq_${videoCounter}.mp4`;
                     zip.file(videoFile, videoResult.blob);
 
                     const videoDetail = {
-                        id: `video_${seq.prefix}`,
+                        id: `video_${videoCounter}`,
                         file: videoFile,
                         width: videoResult.width,
                         height: videoResult.height,
@@ -225,15 +228,19 @@ const Optimizer = {
                     stats.framesInVideo += frames.length;
                     stats.videoSize += videoResult.blob.size;
 
-                    seq.ids.forEach(id => videoFrameIds.add(id));
+                    seq.ids.forEach(id => {
+                        videoFrameIds.add(id);
+                        videoFrameSeqIndex.set(id, videoCounter);
+                    });
+                    videoCounter++;
                 } catch (err) {
                     onProgress({
                         phase: 'video',
-                        message: `${seq.prefix}: ошибка — ${err.message}`,
+                        message: `Видео ${si + 1}: ошибка — ${err.message}`,
                         percent: 10 + Math.round((si + 1) / sequences.length * 40),
                         error: true
                     });
-                    console.error(`Ошибка кодирования видео для ${seq.prefix}:`, err);
+                    console.error(`Ошибка кодирования видео ${si}:`, err);
                 }
             }
         }
@@ -254,7 +261,7 @@ const Optimizer = {
             if (videoFrameIds.has(asset.id)) {
                 asset.p = '';
                 asset.u = '';
-                asset._video = `video_${sequences.find(s => s.ids.includes(asset.id))?.prefix}`;
+                asset._video = `video_${videoFrameSeqIndex.get(asset.id)}`;
                 continue;
             }
             processedCount++;

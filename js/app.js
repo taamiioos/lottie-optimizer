@@ -19,13 +19,13 @@ document.addEventListener('DOMContentLoaded', () => {
             logEl.appendChild(d);
             logEl.scrollTop = logEl.scrollHeight;
         },
-        info(t) { this.add(t); },
-        ok(t) { this.add(t, 'success'); },
-        err(t) { this.add(t, 'error'); },
+        info(t)  { this.add(t); },
+        ok(t)    { this.add(t, 'success'); },
+        warn(t)  { this.add(t, 'warn'); },
+        err(t)   { this.add(t, 'error'); },
         phase(t) { this.add(t, 'phase'); }
     };
 
-    $('clearLog').onclick = () => log.clear();
     // создаём анимацию lottie в контейнере
     function createAnim(container, data) {
         container.innerHTML = '';
@@ -184,10 +184,10 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.className = 'progressBarFill';
         text.textContent = 'Загрузка...';
         statsEl.innerHTML = '';
-        statsEl.classList.remove('show');
 
+        let animBefore = null;
         try {
-            createAnim(beforeEl, data);
+            animBefore = createAnim(beforeEl, data);
         } catch (e) {
             log.err(`[${fileName}] не удалось отрисовать оригинал — ${e.message}`);
         }
@@ -196,7 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
         log.phase(`[${fileName}] начинается оптимизация`);
 
         const fileSize = new Blob([JSON.stringify(data)]).size;
-        log.info(`[${fileName}] оригинал: ${formatSize(fileSize)}`);
+        const assetCount = (data.assets || []).filter(a => a.p?.startsWith('data:image')).length;
+        log.info(`[${fileName}] оригинал: ${formatSize(fileSize)}, изображений: ${assetCount}, fps: ${data.fr || '?'}`);
 
         try {
             const result = await Optimizer.run(data, {
@@ -206,6 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onProgress: (info) => {
                     bar.style.width = info.percent + '%';
                     text.textContent = info.message;
+                    if (info.phase === 'sequences' || info.phase === 'analysis') log.info(`[${fileName}] ${info.message}`);
                     if (info.error) log.err(`[${fileName}] ${info.message}`);
                 }
             });
@@ -216,14 +218,19 @@ document.addEventListener('DOMContentLoaded', () => {
             text.textContent = `Готово за ${totalSec} с`;
             log.ok(`[${fileName}] готово — сэкономлено ${result.stats.totalSavedPct}%`);
 
+            let animAfter = null;
             try {
-                createAnim(afterEl, result.preview);
+                animAfter = createAnim(afterEl, result.preview);
             } catch (e) {
                 log.err(`[${fileName}] не удалось отрисовать превью — ${e.message}`);
             }
 
             renderStats(statsEl, result.stats, fileSize);
-            statsEl.classList.add('show');
+            logDetailedStats(fileName, result.stats, fileSize);
+
+            if (animBefore && animAfter) {
+                setupDemoControls(index.toString(), animBefore, animAfter);
+            }
 
             return result;
         } catch (err) {
@@ -286,8 +293,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleUserFile(file) {
         const userSlot = $('userSlot');
         const userDl = $('userDownloads');
+        const userSection = $('userSection');
 
         userSlot.style.display = '';
+        userSection.classList.add('has-result');
         userDl.style.display = 'none';
         $('user-name').textContent = file.name;
 
@@ -301,15 +310,23 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.className = 'progressBarFill';
         text.textContent = 'Парсим JSON...';
         statsEl.innerHTML = '';
-        statsEl.classList.remove('show');
         afterEl.innerHTML = '';
 
         try {
             const data = JSON.parse(await file.text());
 
-            createAnim(beforeEl, data);
-            text.textContent = 'Оптимизируем...';
+            const assetCount = (data.assets || []).filter(a => a.p?.startsWith('data:image')).length;
             log.phase(`[${file.name}] начинаем оптимизацию`);
+            log.info(`[${file.name}] оригинал: ${formatSize(file.size)}, изображений: ${assetCount}, fps: ${data.fr || '?'}`);
+
+            let animBefore = null;
+            try {
+                animBefore = createAnim(beforeEl, data);
+            } catch (e) {
+                log.err(`[${file.name}] не удалось отрисовать оригинал — ${e.message}`);
+            }
+
+            text.textContent = 'Оптимизируем...';
 
             const result = await Optimizer.run(data, {
                 quality: 0.8,
@@ -318,6 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onProgress: (info) => {
                     bar.style.width = info.percent + '%';
                     text.textContent = info.message;
+                    if (info.phase === 'sequences' || info.phase === 'analysis') log.info(`[${file.name}] ${info.message}`);
                     if (info.error) log.err(`[${file.name}] ${info.message}`);
                 }
             });
@@ -330,14 +348,20 @@ document.addEventListener('DOMContentLoaded', () => {
             text.textContent = `Готово за ${totalSec} с`;
             log.ok(`[${file.name}] готово — сэкономлено ${result.stats.totalSavedPct}%`);
 
+            let animAfter = null;
             try {
-                createAnim(afterEl, result.preview);
+                animAfter = createAnim(afterEl, result.preview);
             } catch (e) {
                 log.err(`[${file.name}] не удалось отрисовать превью — ${e.message}`);
             }
 
             renderStats(statsEl, result.stats, file.size);
-            statsEl.classList.add('show');
+            logDetailedStats(file.name, result.stats, file.size);
+
+            if (animBefore && animAfter) {
+                setupDemoControls('user', animBefore, animAfter);
+            }
+
             userDl.style.display = 'flex';
 
         } catch (err) {
@@ -365,6 +389,145 @@ document.addEventListener('DOMContentLoaded', () => {
         a.download = name;
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    // управление воспроизведением в демо-слоте
+    function setupDemoControls(slot, animBefore, animAfter) {
+        const p         = `dctrl-${slot}`;
+        const controls  = $(p);
+        const scrubber  = $(`${p}-scrub`);
+        const frameEl   = $(`${p}-frame`);
+        const btnPlay   = $(`${p}-play`);
+        const btnStop   = $(`${p}-stop`);
+        const speedSel  = $(`${p}-speed`);
+        const btnLoop   = $(`${p}-loop`);
+
+        if (!controls || !animBefore || !animAfter) return;
+        controls.style.display = '';
+
+        const totalFrames = Math.max(0, Math.floor(animAfter.totalFrames) - 1);
+        scrubber.max = totalFrames;
+
+        let playing   = true;
+        let scrubbing = false;
+        let looping   = true;
+
+        function updateLabel(f) {
+            frameEl.textContent = `${Math.floor(f)} / ${totalFrames}`;
+        }
+        updateLabel(0);
+
+        animAfter.addEventListener('enterFrame', (e) => {
+            if (scrubbing) return;
+            scrubber.value = Math.floor(e.currentTime);
+            updateLabel(e.currentTime);
+        });
+
+        animAfter.addEventListener('complete', () => {
+            playing = false;
+            btnPlay.innerHTML = '▶&ensp;Играть';
+        });
+
+        scrubber.addEventListener('pointerdown', () => {
+            scrubbing = true;
+            if (playing) { animBefore.pause(); animAfter.pause(); }
+        });
+
+        scrubber.addEventListener('input', () => {
+            const f = parseInt(scrubber.value);
+            animBefore.goToAndStop(f, true);
+            animAfter.goToAndStop(f, true);
+            updateLabel(f);
+        });
+
+        scrubber.addEventListener('pointerup', () => {
+            scrubbing = false;
+            if (playing) { animBefore.play(); animAfter.play(); }
+        });
+
+        btnPlay.onclick = () => {
+            if (playing) {
+                animBefore.pause(); animAfter.pause();
+                playing = false;
+                btnPlay.innerHTML = '▶';
+            } else {
+                animBefore.play(); animAfter.play();
+                playing = true;
+                btnPlay.innerHTML = '⏸';
+            }
+        };
+
+        btnStop.onclick = () => {
+            animBefore.stop(); animAfter.stop();
+            playing = false;
+            scrubber.value = 0;
+            updateLabel(0);
+            btnPlay.innerHTML = '▶';
+        };
+
+        speedSel.onchange = () => {
+            const s = parseFloat(speedSel.value);
+            animBefore.setSpeed(s);
+            animAfter.setSpeed(s);
+        };
+
+        btnLoop.onclick = () => {
+            looping = !looping;
+            animBefore.setLoop(looping);
+            animAfter.setLoop(looping);
+            btnLoop.classList.toggle('active', looping);
+        };
+    }
+
+    // детальный вывод статистики в журнал после завершения оптимизации
+    function logDetailedStats(fileName, s, origSize) {
+        const tag = `[${fileName}]`;
+
+        // форматы
+        const fmtList = Object.entries(s.formats || {}).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ');
+        log.info(`${tag} Форматы: ${fmtList || '—'}`);
+
+        // размеры до/после
+        const jsonBefore = formatSize(origSize);
+        const jsonAfter  = formatSize(s.optimizedJsonSize);
+        const zipSize    = formatSize(s.zipFileSize);
+        const total      = formatSize(s.optimizedJsonSize + s.zipFileSize);
+        log.info(`${tag} Размер: ${jsonBefore} → JSON ${jsonAfter} + ZIP ${zipSize} = ${total}`);
+
+        // тайминги
+        const pt = s.phaseTiming || {};
+        log.info(`${tag} Тайминги: анализ ${fmtTime(pt.analysis || 0)}, видео ${fmtTime(pt.videoEncoding || 0)}, картинки ${fmtTime(pt.imageProcessing || 0)}, ZIP ${fmtTime(pt.zip || 0)}`);
+
+        // видео
+        if (s.sequences > 0) {
+            log.phase(`${tag} Видео: ${s.sequences} последоват., ${s.framesInVideo} кадров → ${formatSize(s.videoSize)}`);
+            for (const vd of (s.videoDetails || [])) {
+                const es  = vd.encodingStats || {};
+                const pct = ((1 - vd.fileSize / vd.originalSize) * 100).toFixed(0);
+                const br  = es.bitrateActual ? ` ${(es.bitrateActual / 1000).toFixed(0)} кбит/с` : '';
+                const gpu = es.hardwareAcceleration === 'prefer-hardware' ? ' GPU' : ' CPU';
+                log.ok(`${tag}   ${vd.file}: ${vd.width}×${vd.height}, ${vd.frames} кадров @ ${vd.fps} fps,${br},${gpu}`);
+                log.ok(`${tag}   ${formatSize(vd.originalSize)} → ${formatSize(vd.fileSize)} (-${pct}%), ключ: ${es.keyFrames || '?'}, дельта: ${es.deltaFrames || '?'}`);
+            }
+        }
+        if (s.videoSkipped > 0) {
+            log.warn(`${tag} Видео пропущено (больше оригинала): ${s.videoSkipped} шт.`);
+        }
+
+        // изображения — summary
+        log.phase(`${tag} Изображения: ${s.uniqueImages} уникальных, ${s.duplicates} дубликатов, WebP ${s.webpConversions}, оригинал ${s.keptOriginal}`);
+
+        // топ-5 самых тяжёлых до оптимизации
+        const details = [...(s.imageDetails || [])].sort((a, b) => b.originalSize - a.originalSize).slice(0, 5);
+        for (const img of details) {
+            const arrow = img.savings > 0 ? `→ ${formatSize(img.optimizedSize)} (-${img.ratio}%)` : '(без изменений)';
+            log.info(`${tag}   ${img.id}: ${img.format.toUpperCase()} ${formatSize(img.originalSize)} ${arrow}`);
+        }
+        if ((s.imageDetails || []).length > 5) {
+            log.info(`${tag}   ... и ещё ${s.imageDetails.length - 5} изображений`);
+        }
+
+        log.ok(`${tag} итого: ${fmtTime(s.totalTime)}`);
     }
 
     // запускаем демки сразу при загрузке страницы

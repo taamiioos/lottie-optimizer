@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Lottie Плеер</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="optimizer.css">
     <link rel="stylesheet" href="player.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
@@ -13,41 +13,39 @@
 </head>
 <body>
 <main class="pl-app">
-    <!-- навигация -->
+
     <nav class="pl-nav">
         <a href="optimizer.html" class="pl-back">← Оптимизатор</a>
-        <h1 class="pl-title">
-            Lottie Плеер
-        </h1>
+        <h1 class="pl-title">Lottie Плеер</h1>
     </nav>
+
     <!-- инструкция -->
     <section class="pl-howto">
         <div class="pl-steps-row">
-        <div class="pl-step">
-            <div class="pl-step-num">1</div>
-            <div class="pl-step-text">
-                <strong>optimized.json</strong>
-                <span>скачайте в оптимизаторе</span>
+            <div class="pl-step">
+                <div class="pl-step-num">1</div>
+                <div class="pl-step-text">
+                    <strong>optimized.json</strong>
+                    <span>скачайте в оптимизаторе</span>
+                </div>
+            </div>
+            <div class="pl-step-arrow">→</div>
+            <div class="pl-step">
+                <div class="pl-step-num">2</div>
+                <div class="pl-step-text">
+                    <strong>assets.zip</strong>
+                    <span>скачайте в оптимизаторе</span>
+                </div>
+            </div>
+            <div class="pl-step-arrow">→</div>
+            <div class="pl-step">
+                <div class="pl-step-num">3</div>
+                <div class="pl-step-text">
+                    <strong>Воспроизвести</strong>
+                    <span>смотрите анимацию</span>
+                </div>
             </div>
         </div>
-        <div class="pl-step-arrow">→</div>
-        <div class="pl-step">
-            <div class="pl-step-num">2</div>
-            <div class="pl-step-text">
-                <strong>assets.zip</strong>
-                <span>скачайте в оптимизаторе</span>
-            </div>
-        </div>
-        <div class="pl-step-arrow">→</div>
-        <div class="pl-step">
-            <div class="pl-step-num">3</div>
-            <div class="pl-step-text">
-                <strong>Воспроизвести</strong>
-                <span>смотрите анимацию</span>
-            </div>
-        </div>
-        </div>
-
     </section>
 
     <!-- карточка загрузки -->
@@ -55,13 +53,13 @@
         <input type="file" id="jsonInput" accept=".json" hidden>
         <input type="file" id="zipInput" accept=".zip" hidden>
 
-        <!-- две зоны drag-and-drop -->
         <div class="pl-zones">
             <div class="pl-zone" id="zoneJson">
                 <span class="pl-zone-label">JSON файл</span>
                 <span class="pl-zone-hint" id="jsonHint">optimized.json</span>
                 <span class="pl-zone-size" id="jsonSize" style="display:none"></span>
             </div>
+            <div class="pl-zone-divider"></div>
             <div class="pl-zone" id="zoneZip">
                 <span class="pl-zone-label">ZIP архив</span>
                 <span class="pl-zone-hint" id="zipHint">assets.zip</span>
@@ -69,10 +67,10 @@
             </div>
         </div>
 
-        <!-- footer: кнопка + прогресс -->
         <div class="pl-footer">
             <button class="pl-play-btn" id="btnPlay" disabled>
-                <span>▶</span> Воспроизвести
+                <span class="pl-play-icon">▶</span>
+                <span>Воспроизвести</span>
             </button>
             <div class="pl-footer-mid">
                 <div class="progressBarTrack">
@@ -80,7 +78,6 @@
                 </div>
                 <div class="progressText" id="progressLabel"></div>
             </div>
-            <span class="pl-status" id="statusText"></span>
         </div>
     </section>
 
@@ -93,9 +90,27 @@
         </div>
     </div>
 
+    <!-- управление воспроизведением -->
+    <div class="pl-controls" id="playerControls" style="display:none">
+        <div class="pl-scrubber-row">
+            <span class="pl-frame-label" id="frameInfo">—</span>
+            <input type="range" class="pl-scrubber" id="scrubber" min="0" max="100" value="0" step="1">
+        </div>
+        <div class="pl-ctrl-row">
+            <button class="pl-ctrl-btn pl-ctrl-stop" id="btnStop" title="В начало">■</button>
+            <button class="pl-ctrl-btn pl-ctrl-playpause" id="btnPause">⏸</button>
+            <div class="pl-ctrl-gap"></div>
+            <select class="pl-speed-sel" id="speedSelect" title="Скорость воспроизведения">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2×</option>
+            </select>
+            <button class="pl-ctrl-btn pl-ctrl-loop active" id="btnLoop">↺</button>
+        </div>
+    </div>
     <!-- статистика + журнал -->
     <div class="pl-bottom">
-
         <div class="pl-card" id="statsSection" style="display:none">
             <div class="pl-card-title">Статистика декодирования</div>
             <div class="pl-card-body" id="statsBody"></div>
@@ -104,11 +119,11 @@
         <div class="pl-card">
             <div class="pl-card-title">
                 Журнал декодирования
-                <button id="clearLog">Очистить</button>
             </div>
             <div class="pl-log-body" id="logContent"></div>
         </div>
     </div>
+
 </main>
 </body>
 </html>

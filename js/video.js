@@ -131,9 +131,6 @@ const VideoEncoderUtil = {
 
             // первый кадр уже загружен, остальные грузим по мере надобности
             const img = i === 0 ? firstImg : await this._loadImage(frames[i]);
-
-            // проверяем снова — error callback мог прилететь пока ждали картинку
-            // именно здесь и происходила ошибка «encode on closed codec»
             if (encoderError) throw encoderError;
 
             ctx.clearRect(0, 0, encWidth, encHeight);
@@ -152,8 +149,6 @@ const VideoEncoderUtil = {
             encodingStats.framesEncoded++;
             onProgress(Math.round((i + 1) / frames.length * 100), i + 1, frames.length);
         }
-
-        // не вызываем flush на уже закрытом энкодере — он выбросит ещё одну ошибку
         if (!encoderError) {
             await encoder.flush();
         }
@@ -209,7 +204,6 @@ const VideoEncoderUtil = {
         };
     },
 
-    // маленькая утилита — приводит description к ArrayBuffer
     // webcodecs может вернуть что угодно, а mp4box хочет именно ArrayBuffer
     _toArrayBuffer(source) {
         if (source instanceof ArrayBuffer) return source;
@@ -225,7 +219,7 @@ const VideoEncoderUtil = {
 
         const mp4file = MP4Box.createFile();
 
-        // mp4box требует ArrayBuffer для avcDecoderConfigRecord
+        // mp4box требует ArrayBuffer
         const description = this._toArrayBuffer(encoderConfig.description);
 
         const trackId = mp4file.addTrack({
@@ -286,7 +280,7 @@ const VideoEncoderUtil = {
 function _pickAvcCodec(width, height) {
     const mbW = Math.ceil(width  / 16);
     const mbH = Math.ceil(height / 16);
-    const mbs = mbW * mbH; // макроблоков на кадр
+    const mbs = mbW * mbH;
 
     if (mbs <=  1620) return 'avc1.42E01E';
     if (mbs <=  3600) return 'avc1.42E01F';

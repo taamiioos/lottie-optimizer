@@ -1,5 +1,4 @@
 // обработка изображений с фоллбэком на webp
-// если браузер умеет webp — пробуем сжать, если нет или стало больше — оставляем оригинал
 const ImageProcessor = {
     _webpSupported: null, // кэшируем результат проверки, чтобы не проверять каждый раз
     async canWebP() {
@@ -111,7 +110,6 @@ const ImageProcessor = {
             } catch (e) {
             }
         }
-
         // если webp не поддерживается или не помог — возвращаем оригинал + определяем его формат
         const bytes = new Uint8Array(await blob.arrayBuffer());
         const format = this.detectFormat(bytes);

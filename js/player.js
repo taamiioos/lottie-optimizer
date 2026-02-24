@@ -18,7 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
         warn(t)  { this.add(t, 'warn'); },
         phase(t) { this.add(t, 'phase'); }
     };
-    $('clearLog').onclick = () => log.clear();
 
     // прогресс
     const pFill  = $('progressFill');
@@ -84,7 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             state.json = JSON.parse(await file.text());
             markZoneLoaded('zoneJson', 'jsonIcon', 'jsonHint', 'jsonSize', file.name, file.size);
-            $('statusText').textContent = `JSON: ${fmt(file.size)}`;
             log.ok(`JSON загружен: ${file.name} (${fmt(file.size)})`);
         } catch (err) {
             log.err(`Ошибка парсинга JSON: ${err.message}`);
@@ -107,10 +105,25 @@ document.addEventListener('DOMContentLoaded', () => {
             state.zip = await JSZip.loadAsync(await file.arrayBuffer());
             const parseTime = performance.now() - t0;
             markZoneLoaded('zoneZip', 'zipIcon', 'zipHint', 'zipSize', file.name, file.size);
-            $('statusText').textContent = ($('statusText').textContent
-                ? $('statusText').textContent + ' | '
-                : '') + `ZIP: ${fmt(file.size)}`;
             log.ok(`ZIP загружен: ${file.name} (${fmt(file.size)}, разобран за ${fmtTime(parseTime)})`);
+
+            // список содержимого ZIP
+            const allFiles = Object.values(state.zip.files).filter(f => !f.dir);
+            log.info(`Содержимое ZIP: ${allFiles.length} файлов`);
+            const videos = allFiles.filter(f => f.name.endsWith('.mp4'));
+            const images = allFiles.filter(f => !f.name.endsWith('.mp4'));
+            if (videos.length) {
+                log.info(`  Видео (${videos.length}): ${videos.map(f => f.name.split('/').pop()).join(', ')}`);
+            }
+            if (images.length) {
+                const extCounts = images.reduce((acc, f) => {
+                    const ext = f.name.split('.').pop().toUpperCase();
+                    acc[ext] = (acc[ext] || 0) + 1;
+                    return acc;
+                }, {});
+                const extStr = Object.entries(extCounts).map(([k, v]) => `${k}: ${v}`).join(', ');
+                log.info(`  Изображений (${images.length}): ${extStr}`);
+            }
         } catch (err) {
             log.err(`Ошибка загрузки ZIP: ${err.message}`);
         }
@@ -153,15 +166,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const videoAssets = data.videoAssets || [];
 
         // ассеты
-
         log.phase('Извлечение изображений из ZIP...');
         setProgress(5, 'Извлечение изображений...');
 
         const imgT0     = performance.now();
         let   imgDone   = 0;
         const totalImgs = assets.filter(a => a.u && a.p && !a._video).length;
+        const videoAssetCount = (data.videoAssets || []).length;
+        const videoFrameCount = (data.videoAssets || []).reduce((s, v) => s + v.frames, 0);
 
-        log.info(`Найдено картинок: ${totalImgs}`);
+        log.info(`Ассетов в JSON: изображений ${totalImgs}, видео ${videoAssetCount} (${videoFrameCount} кадров)`);
+
         for (const asset of assets) {
             if (!(asset.u && asset.p && !asset._video)) continue;
 
@@ -175,22 +190,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const blob = await zipFile.async('blob');
             stats.imageTotalSize += blob.size;
-
-            // подменяем путь на blob url
             asset.u = '';
             asset.p = URL.createObjectURL(blob);
 
             stats.imageCount++;
             imgDone++;
+
+            // логируем каждый файл
+            log.info(`  ← ${zipPath} (${fmt(blob.size)})`);
+
             setProgress(5 + Math.round(imgDone / Math.max(totalImgs, 1) * 30),
                 `Картинка ${imgDone}/${totalImgs}`);
         }
-
         stats.imageDecodeTime = performance.now() - imgT0;
-        log.ok(`Картинок: ${stats.imageCount} (${fmt(stats.imageTotalSize)}) за ${fmtTime(stats.imageDecodeTime)}`);
+        const imgRate = stats.imageDecodeTime > 0
+            ? (stats.imageCount / (stats.imageDecodeTime / 1000)).toFixed(1) : '—';
+        log.ok(`Картинок: ${stats.imageCount} (${fmt(stats.imageTotalSize)}) за ${fmtTime(stats.imageDecodeTime)} — ${imgRate} файл/с`);
 
         // видео
-
         log.phase(`Декодирование видео: ${videoAssets.length} файл(ов)...`);
 
         const vidT0 = performance.now();
@@ -206,8 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             setProgress(35 + Math.round(vi / Math.max(videoAssets.length, 1) * 50),
                 `Видео ${vi + 1}/${videoAssets.length}: ${va.file}...`);
-
-            log.info(`[${va.file}] ${va.width}×${va.height}, ${va.frames} кадров @ ${va.fps} fps`);
 
             const vdStat = {
                 file:            va.file,
@@ -225,39 +240,53 @@ document.addEventListener('DOMContentLoaded', () => {
             const videoBlob   = await zipFile.async('blob');
             vdStat.fileSize   = videoBlob.size;
             stats.videoTotalSize += videoBlob.size;
-
+            log.info(`[${va.file}] ${va.width}×${va.height}, ${va.frames} кадров @ ${va.fps} fps, ${fmt(videoBlob.size)}`);
             const frameT0 = performance.now();
             let frames;
 
             try {
+                log.info(`[${va.file}] Метод: WebCodecs API — запуск демультиплексирования MP4...`);
                 frames = await extractFramesWebCodecs(
                     videoBlob, va.frames, va.fps,
                     (cur, total) => {
+                        if (cur === 1 || cur % Math.max(1, Math.floor(total / 4)) === 0 || cur === total) {
+                            log.info(`[${va.file}] декодировано ${cur}/${total} кадров`);
+                        }
                         setProgress(
                             35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(videoAssets.length, 1) * 50),
                             `Видео ${vi + 1}/${videoAssets.length}: кадр ${cur}/${total}`
                         );
                     },
-                    (accel) => { vdStat.hardwareAccel = accel; }
+                    (accel) => {
+                        vdStat.hardwareAccel = accel;
+                        log.info(`[${va.file}] Ускорение: ${accel === 'GPU' ? 'GPU (аппаратное)' : 'CPU (программное)'}`);
+                    }
                 );
-                stats.webCodecsUsed    = true;
-                vdStat.decoderApi      = 'WebCodecs';
-                log.ok(`[${va.file}] WebCodecs: ${frames.length} кадров`);
+                stats.webCodecsUsed = true;
+                vdStat.decoderApi   = 'WebCodecs';
+                log.ok(`[${va.file}] WebCodecs: ${frames.length} кадров → ${frames.length} PNG blob URL`);
             } catch (err) {
-                log.warn(`[${va.file}] WebCodecs недоступен (${err.message}), фоллбэк на video element`);
+                log.warn(`[${va.file}] WebCodecs недоступен (${err.message})`);
+                log.warn(`[${va.file}] Переключаемся на <video> element + seek...`);
                 frames = await extractFramesFallback(
                     videoBlob, va.frames, va.fps,
                     (cur, total) => {
+                        if (cur === 1 || cur % Math.max(1, Math.floor(total / 4)) === 0 || cur === total) {
+                            log.info(`[${va.file}] seek ${cur}/${total}`);
+                        }
                         setProgress(
                             35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(videoAssets.length, 1) * 50),
                             `Видео ${vi + 1}/${videoAssets.length}: кадр ${cur}/${total}`
                         );
                     }
                 );
-                log.ok(`[${va.file}] video element: ${frames.length} кадров`);
+                log.ok(`[${va.file}] video element: ${frames.length} кадров извлечено`);
             }
             vdStat.extractTime     = performance.now() - frameT0;
             vdStat.avgFrameExtract = va.frames > 0 ? vdStat.extractTime / va.frames : 0;
+            const frameRate = vdStat.extractTime > 0
+                ? (frames.length / (vdStat.extractTime / 1000)).toFixed(1) : '—';
+            log.info(`[${va.file}] скорость декодирования: ${frameRate} кадр/с, среднее на кадр: ${fmtTime(vdStat.avgFrameExtract)}`);
             // подставляем кадры в ассеты
             va.frameIds.forEach((id, i) => {
                 const asset = assets.find(a => a.id === id);
@@ -272,11 +301,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             log.ok(`[${va.file}] готово за ${fmtTime(vdStat.extractTime)}`);
         }
-
         stats.videoDecodeTime = performance.now() - vidT0;
 
         // lottie
-
         setProgress(90, 'Инициализация Lottie...');
         log.phase('Запуск Lottie...');
 
@@ -309,7 +336,98 @@ document.addEventListener('DOMContentLoaded', () => {
         $('btnPlay').textContent = '▶ Воспроизвести';
 
         renderStats(stats);
+        setupControls(state.anim);
     };
+
+    // управление воспроизведением
+    function setupControls(anim) {
+        const controls  = $('playerControls');
+        const scrubber  = $('scrubber');
+        const frameInfo = $('frameInfo');
+        const btnPause  = $('btnPause');
+        const btnStop   = $('btnStop');
+        const speedSel  = $('speedSelect');
+        const btnLoop   = $('btnLoop');
+
+        controls.style.display = '';
+
+        const totalFrames = Math.max(0, Math.floor(anim.totalFrames) - 1);
+        scrubber.max = totalFrames;
+
+        let playing   = true;  // autoplay: true
+        let scrubbing = false;
+        let looping   = true;
+
+        function updateFrameLabel(f) {
+            frameInfo.textContent = `${Math.floor(f)} / ${totalFrames}`;
+        }
+
+        updateFrameLabel(0);
+
+        // обновляем ползунок на каждом кадре
+        anim.addEventListener('enterFrame', (e) => {
+            if (scrubbing) return;
+            scrubber.value = Math.floor(e.currentTime);
+            updateFrameLabel(e.currentTime);
+        });
+
+        // когда анимация добегает до конца
+        anim.addEventListener('complete', () => {
+            playing = false;
+            btnPause.innerHTML = '▶';
+        });
+
+        // скраббер — перетаскивание
+        scrubber.addEventListener('pointerdown', () => {
+            scrubbing = true;
+            if (playing) anim.pause();
+        });
+
+        scrubber.addEventListener('input', () => {
+            const f = parseInt(scrubber.value);
+            anim.goToAndStop(f, true);
+            updateFrameLabel(f);
+        });
+
+        scrubber.addEventListener('pointerup', () => {
+            scrubbing = false;
+            if (playing) anim.play();
+        });
+
+        // пауза / воспроизведение
+        btnPause.onclick = () => {
+            if (playing) {
+                anim.pause();
+                playing = false;
+                btnPause.innerHTML = '▶';
+            } else {
+                anim.play();
+                playing = true;
+                btnPause.innerHTML = '⏸&ensp;Пауза';
+            }
+        };
+
+        // стоп — в начало
+        btnStop.onclick = () => {
+            anim.stop();
+            playing = false;
+            scrubber.value = 0;
+            updateFrameLabel(0);
+            btnPause.innerHTML = '▶';
+        };
+
+        // скорость воспроизведения
+        speedSel.onchange = () => {
+            anim.setSpeed(parseFloat(speedSel.value));
+        };
+
+        // повтор вкл/выкл
+        btnLoop.onclick = () => {
+            looping = !looping;
+            anim.setLoop(looping);
+            btnLoop.classList.toggle('active', looping);
+        };
+    }
 
     // WebCodecs VideoDecoder + MP4Box
     async function extractFramesWebCodecs(videoBlob, frameCount, fps, onFrame, onAccel) {
@@ -427,8 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // фоллбэк — video element + seek
-    // медленнее но работает везде где нет WebCodecs (Safari)
-
+    // медленнее но работает везде где нет WebCodecs
     async function extractFramesFallback(videoBlob, count, fps, onFrame) {
         return new Promise((resolve, reject) => {
             const video  = document.createElement('video');
@@ -468,6 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const section = $('statsSection');
         const body    = $('statsBody');
         section.style.display = '';
+        document.querySelector('.pl-bottom').classList.add('has-stats');
 
         let html = '<div class="statsInner">';
         // три главные карточки
