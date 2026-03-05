@@ -4,14 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Lottie Optimizer</title>
-    <link rel="stylesheet" href="optimizer.css">
+    <link rel="stylesheet" href="./styles/optimizer.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
     <script src="https://unpkg.com/mp4box@0.5.2/dist/mp4box.all.min.js" defer></script>
-    <script src="js/image.js" defer></script>
-    <script src="js/video.js" defer></script>
-    <script src="js/optimizer.js" defer></script>
-    <script src="js/app.js" defer></script>
+    <script type="module" src="./app.js"></script>
 </head>
 <body>
 <main class="app">
@@ -22,14 +19,13 @@
                 <h1 class="app-title">Lottie Optimizer</h1>
             </div>
         </div>
-        <a href="player.html" class="nav-btn">▶&ensp;Открыть плеер</a>
+        <a href="./player.html" class="nav-btn">▶&ensp;Открыть плеер</a>
     </header>
 
     <section class="demoSection">
         <div class="demoGrid">
-
             <div class="demoSlot" data-index="0">
-                <div class="demoName" data-index="0">Slideshow.json</div>
+                <div class="demoName" data-index="0">sample1.json</div>
                 <div class="demoPair">
                     <div class="demoCard">
                         <div class="demoLabel">До</div>
@@ -65,11 +61,9 @@
                     </div>
                 </div>
                 <div class="demoStats" id="demo-stats-0"></div>
-
             </div>
-
             <div class="demoSlot" data-index="1">
-                <div class="demoName" data-index="1">black rainbow cat.json</div>
+                <div class="demoName" data-index="1">sample2.json</div>
                 <div class="demoPair">
                     <div class="demoCard">
                         <div class="demoLabel">До</div>
@@ -109,7 +103,7 @@
             </div>
 
             <div class="demoSlot" data-index="2">
-                <div class="demoName" data-index="2">lottie with cat.json</div>
+                <div class="demoName" data-index="2">sample3.json</div>
                 <div class="demoPair">
                     <div class="demoCard">
                         <div class="demoLabel">До</div>
@@ -153,7 +147,7 @@
         <div class="uploadArea" id="uploadArea">
             <input type="file" id="fileInput" accept=".json" hidden>
             <div class="uploadIcon">+</div>
-            <div class="uploadText">Перетащите .json сюда или нажмите для загрузки</div>
+            <div class="uploadText">Перетащите .json или нажмите для загрузки</div>
         </div>
 
         <div class="userSlot" id="userSlot" style="display:none">
@@ -202,10 +196,6 @@
         </div>
     </section>
 
-
-    <section class="logSection" id="logSection">
-        <div class="logContent" id="logContent"></div>
-    </section>
 
 </main>
 </body>

@@ -1,5 +1,5 @@
 .pl-app {
-    max-width: 980px;
+    max-width: 1500px;
     margin: 0 auto;
     padding: 0 16px 64px;
 }
@@ -76,7 +76,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(99,102,241,0.35);
 }
 
 .pl-step-text strong {
@@ -244,11 +243,13 @@
 }
 
 #player {
-    aspect-ratio: 4 / 3;
+    width: 100%;
+    max-height: 600px;
     background: #020617;
 }
 
 #player canvas {
+    display: block;
     width:  100% !important;
     height: 100% !important;
 }
@@ -288,7 +289,6 @@
     border: 1px solid var(--border);
     border-top: none;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-    margin-bottom: 20px;
 }
 
 .pl-player-wrap.playing + .pl-controls {
@@ -441,15 +441,29 @@
     color: var(--text);
 }
 
-.pl-bottom {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
+.pl-content {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
     margin-bottom: 32px;
 }
 
-.pl-bottom.has-stats {
-    grid-template-columns: 1fr 1fr;
+.pl-left {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.pl-bottom {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.pl-bottom .demoStats {
+    background: linear-gradient(160deg, #1e293b 0%, #182030 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
 }
 
 .pl-card {
@@ -491,22 +505,5 @@
 
 .pl-card-body {
     padding: 14px;
-    overflow-y: auto;
-    max-height: 420px;
-    scrollbar-width: thin;
-    scrollbar-color: #334155 transparent;
 }
 
-.pl-log-body {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 11px;
-    max-height: 320px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #334155 transparent;
-    padding: 6px 0;
-}
-
-.pl-log-body .logLine {
-    padding: 2px 16px;
-}

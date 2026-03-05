@@ -2,33 +2,26 @@
 const ImageProcessor = {
     _webpSupported: null, // кэшируем результат проверки, чтобы не проверять каждый раз
     async canWebP() {
-        // если уже проверяли — сразу возвращаем
+
         if (this._webpSupported !== null) return this._webpSupported;
-        try {
-            const c = document.createElement('canvas');
-            c.width = 1;
-            c.height = 1;
-            // пытаемся сохранить канвас в webp
-            const blob = await new Promise(r => c.toBlob(r, 'image/webp', 0.5));
-            this._webpSupported = blob !== null && blob.type === 'image/webp';
-        } catch {
-            this._webpSupported = false;
-        }
+
+        const canvas = document.createElement("canvas");
+
+        this._webpSupported =
+            canvas.toDataURL("image/webp").startsWith("data:image/webp");
 
         return this._webpSupported;
     },
 
     // разбираем base64 data url на mime и байты
-    decodeBase64(dataUrl) {
-        const match = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
-        if (!match) return null;
-        const [, mime, b64] = match;
-        const bin = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) {
-            bytes[i] = bin.charCodeAt(i);
+    async decodeBase64(dataUrl) {
+        try {
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            return blob;
+        } catch {
+            return null;
         }
-        return { mime, bytes };
     },
 
     // считаем sha-256 хеш от байтов
@@ -62,36 +55,41 @@ const ImageProcessor = {
 
     // конвертируем любой blob в webp через canvas
     async toWebP(blob, quality = 0.8) {
-        const url = URL.createObjectURL(blob);
+
+        const bitmap = await createImageBitmap(blob);
 
         try {
-            return await new Promise((resolve, reject) => {
-                const img = new Image();
+            if (typeof OffscreenCanvas !== "undefined") {
+                const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(bitmap, 0, 0);
+                const out = await canvas.convertToBlob({
+                    type: "image/webp",
+                    quality
+                });
 
-                img.onload = () => {
-                    URL.revokeObjectURL(url);
+                bitmap.close?.();
+                return out;
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
 
-                    const c = document.createElement('canvas');
-                    c.width = img.width;
-                    c.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(bitmap, 0, 0);
 
-                    c.getContext('2d').drawImage(img, 0, 0);
-
-                    c.toBlob(b => {
-                        if (b) resolve(b);
-                        else reject(new Error('toBlob вернул null'));
-                    }, 'image/webp', quality);
-                };
-
-                img.onerror = () => {
-                    URL.revokeObjectURL(url);
-                    reject(new Error('не удалось загрузить изображение'));
-                };
-
-                img.src = url;
+            const blobOut = await new Promise((resolve, reject) => {
+                canvas.toBlob(b => {
+                    if (b) resolve(b);
+                    else reject(new Error("toBlob returned null"));
+                }, "image/webp", quality);
             });
+
+            bitmap.close?.();
+            return blobOut;
+
         } catch (e) {
-            URL.revokeObjectURL(url);
+            bitmap.close?.();
             throw e;
         }
     },
@@ -116,3 +114,5 @@ const ImageProcessor = {
         return { blob, format };
     }
 };
+
+export { ImageProcessor };

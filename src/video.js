@@ -1,15 +1,12 @@
 // кодирование видео через webcodecs + mp4box
 const VideoEncoderUtil = {
     async encode(frames, options = {}) {
-        const { fps = 24, onProgress = () => {} } = options;
-
+        const { fps = 24, bitrateMultiplier = 1, onProgress = () => {} } = options;
         // сначала проверяем, вообще есть ли в браузере нужный api
         if (!('VideoEncoder' in window)) {
             throw new Error('webcodecs api не поддерживается в этом браузере');
         }
-
-        const t0 = performance.now(); // засекаем общее время
-
+        const t0 = performance.now();
         // размеры берём из первого кадра, остальные могут быть такими же
         const firstImg = await this._loadImage(frames[0]);
         const width = firstImg.naturalWidth || firstImg.width;
@@ -26,10 +23,10 @@ const VideoEncoderUtil = {
 
         const timescale = 90000; // стандартное значение для mp4
         const sampleDuration = Math.round(timescale / fps); // сколько тиков длится один кадр
-
         // объект со всей статистикой
         const encodingStats = {
             configureTime: 0,
+            loadTime: 0,
             encodeTime: 0,
             muxTime: 0,
             totalTime: 0,
@@ -50,11 +47,10 @@ const VideoEncoderUtil = {
 
         // подбираем битрейт автоматически под разрешение
         const pixelsPerFrame = encWidth * encHeight;
-        const bitrateTarget = Math.max(200_000, Math.min(4_000_000, Math.round(pixelsPerFrame * 0.15 * fps)));
+        const bitrateTarget = Math.max(200_000, Math.min(8_000_000, Math.round(pixelsPerFrame * 0.15 * fps * bitrateMultiplier)));
         encodingStats.bitrateTarget = bitrateTarget;
 
         const configT0 = performance.now();
-
         // выбираем уровень H.264 под конкретное разрешение
         const codec = _pickAvcCodec(encWidth, encHeight);
 
@@ -122,45 +118,58 @@ const VideoEncoderUtil = {
         encoder.configure(encoderCfg);
         encodingStats.configureTime = performance.now() - configT0;
 
-        const encodeT0 = performance.now();
         const frameDurationUs = Math.round(1_000_000 / fps); // длительность кадра в микросекундах
 
-        // основной цикл кодирования
-        for (let i = 0; i < frames.length; i++) {
-            if (encoderError) throw encoderError;
+        // параллельно декодируем все кадры в ImageBitmap
+        // ОПТИМИЗАЦИЯ: раньше был await в цикле — каждый кадр ждал предыдущего.
+        // Теперь Promise.all грузит все сразу, пока энкодер настраивается.
+        const loadT0 = performance.now();
+        const images = await Promise.all(
+            frames.map((f, i) => i === 0 ? Promise.resolve(firstImg) : this._loadImage(f))
+        );
+        encodingStats.loadTime = performance.now() - loadT0;
+        if (encoderError) throw encoderError;
 
-            // первый кадр уже загружен, остальные грузим по мере надобности
-            const img = i === 0 ? firstImg : await this._loadImage(frames[i]);
-            if (encoderError) throw encoderError;
+        const encodeT0 = performance.now();
 
-            ctx.clearRect(0, 0, encWidth, encHeight);
-            ctx.drawImage(img, 0, 0, encWidth, encHeight);
+        // определяем где ключевые кадры — первый всегда, плюс там где сцена резко изменилась
+        const keyFrameSet = _detectKeyFrames(images);
+
+        // если размер кадров совпадает с размером энкодера — canvas не нужен,
+        // VideoFrame создаём прямо из ImageBitmap
+        // ОПТИМИЗАЦИЯ: раньше каждый кадр проходил на canvas.
+        // Теперь при чётных размерах VideoFrame создаётся прямо из ImageBitmap
+        const needsPadding = width !== encWidth || height !== encHeight;
+        // основной цикл кодирования — строго последовательно
+        for (let i = 0; i < images.length; i++) {
+            if (encoderError) throw encoderError;
+            const img = images[i];
+            let vf;
+            if (needsPadding) {
+                ctx.clearRect(0, 0, encWidth, encHeight);
+                ctx.drawImage(img, 0, 0, encWidth, encHeight);
+                vf = new VideoFrame(canvas, { timestamp: i * frameDurationUs, duration: frameDurationUs });
+            } else {
+                vf = new VideoFrame(img, { timestamp: i * frameDurationUs, duration: frameDurationUs });
+            }
             if (img.close) img.close(); // освобождаем память
 
-            // создаём VideoFrame и отправляем на кодирование
-            const vf = new VideoFrame(canvas, {
-                timestamp: i * frameDurationUs,
-                duration: frameDurationUs
-            });
-            const keyFrame = i % 30 === 0;
-            encoder.encode(vf, { keyFrame });
+            encoder.encode(vf, { keyFrame: keyFrameSet.has(i) });
             vf.close();
 
             encodingStats.framesEncoded++;
-            onProgress(Math.round((i + 1) / frames.length * 100), i + 1, frames.length);
+            onProgress(Math.round((i + 1) / images.length * 100), i + 1, images.length);
         }
         if (!encoderError) {
             await encoder.flush();
         }
         encoder.close();
-
         if (encoderError) throw encoderError;
-
         if (encodedChunks.length === 0) throw new Error('энкодер вообще ничего не выдал');
         if (!encoderConfig?.description) throw new Error('не получили avc decoder config');
-
         // теперь пакуем всё в mp4 контейнер
         const muxT0 = performance.now();
+        encodingStats.encodeTime = muxT0 - encodeT0; // только сам энкодинг, без мультиплексирования
         const mp4blob = this._muxToMP4(encodedChunks, {
             width: encWidth,
             height: encHeight,
@@ -170,10 +179,8 @@ const VideoEncoderUtil = {
             encoderConfig
         });
 
-        encodingStats.encodeTime = performance.now() - encodeT0;
         encodingStats.muxTime = performance.now() - muxT0;
         encodingStats.totalTime = performance.now() - t0;
-
         // финальные расчёты статистики
         if (encodingStats.minFrameSize === Infinity) encodingStats.minFrameSize = 0;
 
@@ -203,7 +210,6 @@ const VideoEncoderUtil = {
             encodingStats
         };
     },
-
     // webcodecs может вернуть что угодно, а mp4box хочет именно ArrayBuffer
     _toArrayBuffer(source) {
         if (source instanceof ArrayBuffer) return source;
@@ -212,13 +218,11 @@ const VideoEncoderUtil = {
         }
         return new Uint8Array(source).buffer;
     },
-
     // мультиплексирование всех чанков в mp4
     _muxToMP4(chunks, opts) {
         const { width, height, timescale, sampleDuration, encoderConfig } = opts;
 
         const mp4file = MP4Box.createFile();
-
         // mp4box требует ArrayBuffer
         const description = this._toArrayBuffer(encoderConfig.description);
 
@@ -230,7 +234,6 @@ const VideoEncoderUtil = {
             brands: ['isom', 'iso2', 'avc1', 'mp41'],
             avcDecoderConfigRecord: description
         });
-
         // добавляем все сэмплы
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
@@ -243,20 +246,17 @@ const VideoEncoderUtil = {
                 dts: i * sampleDuration
             });
         }
-
         const stream = new DataStream();
         stream.endianness = DataStream.BIG_ENDIAN;
         mp4file.write(stream);
 
         return new Blob([stream.buffer], { type: 'video/mp4' });
     },
-
     // загрузка картинки в Image или createImageBitmap
     async _loadImage(blob) {
         if (typeof createImageBitmap === 'function') {
             return createImageBitmap(blob);
         }
-
         // старый способ через Image
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -275,9 +275,35 @@ const VideoEncoderUtil = {
     }
 };
 
-// выбираем нужный уровень H.264 по количеству макроблоков 16x16
-// чем больше разрешение, тем выше нужен уровень
-function _pickAvcCodec(width, height) {
+// ОПТИМИЗАЦИЯ: раньше ключевые кадры ставились механически каждые 30 кадров.
+// Теперь сравниваем соседние кадры — ключевой кадр только при реальной смене сцены.
+const _detectKeyFrames = (images, threshold = 45) => {
+    const kf = new Set([0]); // первый всегда ключевой
+    if (images.length <= 1) return kf;
+    const SIZE = 32;
+    const canvas = new OffscreenCanvas(SIZE, SIZE);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    let prevPixels = null;
+    for (let i = 0; i < images.length; i++) {
+        ctx.drawImage(images[i], 0, 0, SIZE, SIZE);
+        const curr = ctx.getImageData(0, 0, SIZE, SIZE).data;
+
+        if (prevPixels) {
+            let diff = 0;
+            for (let p = 0; p < curr.length; p += 4) {
+                diff += Math.abs(curr[p]     - prevPixels[p])
+                      + Math.abs(curr[p + 1] - prevPixels[p + 1])
+                      + Math.abs(curr[p + 2] - prevPixels[p + 2]);
+            }
+            if (diff / (SIZE * SIZE * 3) > threshold) kf.add(i);
+        }
+
+        prevPixels = curr.slice();
+    }
+    return kf;
+}
+const _pickAvcCodec = (width, height) => {
     const mbW = Math.ceil(width  / 16);
     const mbH = Math.ceil(height / 16);
     const mbs = mbW * mbH;
@@ -290,3 +316,5 @@ function _pickAvcCodec(width, height) {
     if (mbs <= 22080) return 'avc1.42E032';
                       return 'avc1.42E033';
 }
+
+export { VideoEncoderUtil };

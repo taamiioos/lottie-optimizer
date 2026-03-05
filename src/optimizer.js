@@ -1,3 +1,6 @@
+import {ImageProcessor} from './image.js';
+import {VideoEncoderUtil} from './video.js';
+
 // оптимизатор — главная функция, которая всё сжимает, ищет последовательности, делает видео и пакует в zip
 const Optimizer = {
     // ищем последовательности кадров по id
@@ -8,7 +11,7 @@ const Optimizer = {
         for (const asset of imageAssets) {
             const id = asset.id;
             let prefix = '', num = -1;
-            // чисто числовой id
+            // числовой id
             if (/^\d+$/.test(id)) {
                 prefix = '_seq_numeric';
                 num = parseInt(id);
@@ -16,22 +19,30 @@ const Optimizer = {
             // frame_0000_хеш или image-001-uuid
             if (num === -1) {
                 const m = id.match(/^(.+?)[-_](\d{2,})[-_][a-f0-9-]+$/i);
-                if (m) { prefix = m[1]; num = parseInt(m[2]); }
+                if (m) {
+                    prefix = m[1];
+                    num = parseInt(m[2]);
+                }
             }
-
             // image_0, frame_1, img-12
             if (num === -1) {
                 const m = id.match(/^(.+?)[-_](\d+)$/);
-                if (m) { prefix = m[1]; num = parseInt(m[2]); }
+                if (m) {
+                    prefix = m[1];
+                    num = parseInt(m[2]);
+                }
             }
             // img0
             if (num === -1) {
                 const m = id.match(/^([a-zA-Z]+)(\d+)$/);
-                if (m) { prefix = m[1]; num = parseInt(m[2]); }
+                if (m) {
+                    prefix = m[1];
+                    num = parseInt(m[2]);
+                }
             }
             if (num === -1) continue; // не подошло под последовательность
             if (!groups.has(prefix)) groups.set(prefix, []);
-            groups.get(prefix).push({ id, num });
+            groups.get(prefix).push({id, num});
         }
         const sequences = [];
         for (const [prefix, items] of groups) {
@@ -55,6 +66,7 @@ const Optimizer = {
             quality = 0.8,
             convertToVideo = true,
             videoFps = 24,
+            videoBitrateMultiplier = 1,
             onProgress = () => {}
         } = options;
 
@@ -62,10 +74,8 @@ const Optimizer = {
         // делаем глубокие копии, чтобы не портить оригинальные данные
         const result = JSON.parse(JSON.stringify(data));
         const preview = JSON.parse(JSON.stringify(data));
-
         const assets = result.assets || [];
         const previewAssets = preview.assets || [];
-
         const zip = new JSZip();
         const hashMap = new Map(); // для поиска дубликатов по sha-256
         const blobUrls = []; // чтобы потом можно было отозвать
@@ -104,26 +114,37 @@ const Optimizer = {
             videoSkipped: 0
         };
 
-        // считаем сколько картинок, какого размера и формата
+        // предзагружаем все блобы параллельно — одно декодирование base64 на всё
+        // ОПТИМИЗАЦИЯ: раньше каждая функция декодировала base64 сама.
+        // Теперь один параллельный проход в начале — дальше все работают с готовыми Blob из кэша.
         const analysisT0 = performance.now();
+        onProgress({ phase: 'analysis', message: 'Загрузка ассетов...', percent: 2 });
+
+        const blobCache = new Map(); // asset.id → Blob
+        await Promise.all(
+            assets
+                .filter(a => a.p?.startsWith('data:image') && a.id)
+                .map(async a => {
+                    const blob = await ImageProcessor.decodeBase64(a.p);
+                    if (blob) blobCache.set(a.id, blob);
+                })
+        );
+
+        // анализ — считаем статистику из уже загруженных блобов
         for (const asset of assets) {
             if (!asset.p?.startsWith('data:image')) continue;
-
             stats.totalImages++;
-
-            const decoded = ImageProcessor.decodeBase64(asset.p);
-            if (decoded) {
-                const sz = decoded.bytes.length;
+            const blob = blobCache.get(asset.id);
+            if (blob) {
+                const sz = blob.size;
                 stats.sizeBefore += sz;
-
                 if (sz > stats.largestImage) stats.largestImage = sz;
                 if (sz < stats.smallestImage) stats.smallestImage = sz;
-
-                const fmt = ImageProcessor.detectFormat(decoded.bytes);
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                const fmt = ImageProcessor.detectFormat(bytes);
                 stats.formats[fmt] = (stats.formats[fmt] || 0) + 1;
             }
         }
-
         if (stats.totalImages > 0) {
             stats.avgImageSize = Math.round(stats.sizeBefore / stats.totalImages);
         }
@@ -141,7 +162,7 @@ const Optimizer = {
         const sequences = this.findSequences(assets);
         const videoAssets = [];
         const videoFrameIds = new Set();
-        const videoFrameSeqIndex = new Map(); // id → индекс видео
+        const videoFrameSeqIndex = new Map();
 
         if (sequences.length > 0) {
             onProgress({
@@ -154,7 +175,6 @@ const Optimizer = {
         // кодируем найденные последовательности в mp4
         const videoT0 = performance.now();
         let videoCounter = 0;
-
         if (convertToVideo && sequences.length > 0) {
             for (let si = 0; si < sequences.length; si++) {
                 const seq = sequences[si];
@@ -167,21 +187,18 @@ const Optimizer = {
                 let originalSize = 0;
 
                 for (const id of seq.ids) {
-                    const asset = assets.find(a => a.id === id);
-                    if (!asset?.p) continue;
+                    const blob = blobCache.get(id);
+                    if (!blob) continue;
 
-                    const decoded = ImageProcessor.decodeBase64(asset.p);
-                    if (!decoded) continue;
-
-                    originalSize += decoded.bytes.length;
-                    frames.push(new Blob([decoded.bytes], { type: decoded.mime }));
+                    originalSize += blob.size;
+                    frames.push(blob);
                 }
-
                 if (frames.length < 3) continue;
 
                 try {
                     const videoResult = await VideoEncoderUtil.encode(frames, {
                         fps: videoFps,
+                        bitrateMultiplier: videoBitrateMultiplier,
                         onProgress: (pct) => {
                             onProgress({
                                 phase: 'video',
@@ -249,35 +266,37 @@ const Optimizer = {
 
         // картинки, которые не ушли в видео — конвертируем в webp и кладём в zip
         const imgT0 = performance.now();
-        const totalImagesForProcessing = assets.filter(a =>
-            a.p?.startsWith('data:image') && !videoFrameIds.has(a.id)
-        ).length;
-        let processedCount = 0;
+
+        // собираем кандидатов на обработку, видеокадры закрываем сразу
+        const candidates = [];
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
-            const previewAsset = previewAssets[i];
             if (!asset.p?.startsWith('data:image')) continue;
-            // если кадр уже ушёл в видео — просто очищаем его
             if (videoFrameIds.has(asset.id)) {
                 asset.p = '';
                 asset.u = '';
                 asset._video = `video_${videoFrameSeqIndex.get(asset.id)}`;
                 continue;
             }
-            processedCount++;
+            candidates.push({asset, previewAsset: previewAssets[i]});
+        }
 
-            const pct = 50 + Math.round(processedCount / Math.max(totalImagesForProcessing, 1) * 35);
+        const totalImagesForProcessing = candidates.length;
+        let processedCount = 0;
+        const processingMap = new Map();
+
+        const processOne = async ({asset, previewAsset}) => {
+            const n = ++processedCount;
             onProgress({
                 phase: 'images',
-                message: `Изображение ${processedCount}/${totalImagesForProcessing}`,
-                percent: pct
+                message: `Изображение ${n}/${totalImagesForProcessing}`,
+                percent: 50 + Math.round(n / Math.max(totalImagesForProcessing, 1) * 35)
             });
-            const decoded = ImageProcessor.decodeBase64(asset.p);
-            if (!decoded) continue;
-            const { bytes, mime } = decoded;
-            const blob = new Blob([bytes], { type: mime });
-            const origSize = bytes.length;
-            // проверяем дубликаты по хешу
+            const blob = blobCache.get(asset.id);
+            if (!blob) return;
+            const origSize = blob.size;
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+
             const hash = await ImageProcessor.hash(bytes);
             if (hashMap.has(hash)) {
                 const ref = hashMap.get(hash);
@@ -288,47 +307,76 @@ const Optimizer = {
                 previewAsset.p = ref.url;
                 previewAsset.e = 0;
                 stats.duplicates++;
-                continue;
+                return;
             }
-            const processed = await ImageProcessor.process(blob, quality);
-            const outBlob = processed.blob;
-            const outFormat = processed.format;
-            const ext = ImageProcessor.extFromFormat(outFormat);
-            const newSize = outBlob.size;
-            stats.sizeAfter += newSize;
-            stats.uniqueImages++;
-
-            if (outFormat === 'webp') {
-                stats.webpConversions++;
-                stats.webpSavings += origSize - newSize;
-            } else {
-                stats.keptOriginal++;
+            if (processingMap.has(hash)) {
+                const ref = await processingMap.get(hash);
+                asset.u = 'assets/';
+                asset.p = ref.file;
+                asset.e = 0;
+                previewAsset.u = '';
+                previewAsset.p = ref.url;
+                previewAsset.e = 0;
+                stats.duplicates++;
+                return;
             }
 
-            stats.imageDetails.push({
-                id: asset.id,
-                originalSize: origSize,
-                optimizedSize: newSize,
-                format: outFormat,
-                savings: origSize - newSize,
-                ratio: origSize > 0 ? ((1 - newSize / origSize) * 100).toFixed(1) : 0
-            });
+            // уникальное изображение — стартуем конвертацию и сразу регистрируем промис
+            const promise = (async () => {
+                const processed = await ImageProcessor.process(blob, quality);
+                const outBlob = processed.blob;
+                const outFormat = processed.format;
+                const ext = ImageProcessor.extFromFormat(outFormat);
+                const newSize = outBlob.size;
 
-            const fileName = `img_${hash.slice(0, 8)}.${ext}`;
-            zip.file(`assets/${fileName}`, outBlob);
+                stats.sizeAfter += newSize;
+                stats.uniqueImages++;
+                if (outFormat === 'webp') {
+                    stats.webpConversions++;
+                    stats.webpSavings += origSize - newSize;
+                } else {
+                    stats.keptOriginal++;
+                }
+                stats.imageDetails.push({
+                    id: asset.id,
+                    originalSize: origSize,
+                    optimizedSize: newSize,
+                    format: outFormat,
+                    savings: origSize - newSize,
+                    ratio: origSize > 0 ? ((1 - newSize / origSize) * 100).toFixed(1) : 0
+                });
 
-            const url = URL.createObjectURL(outBlob);
-            blobUrls.push(url);
+                const fileName = `img_${hash.slice(0, 8)}.${ext}`;
+                zip.file(`assets/${fileName}`, outBlob);
+                const url = URL.createObjectURL(outBlob);
+                blobUrls.push(url);
+                hashMap.set(hash, {file: fileName, url});
+                return {file: fileName, url};
+            })();
 
-            hashMap.set(hash, { file: fileName, url });
-
+            processingMap.set(hash, promise);
+            const ref = await promise;
             asset.u = 'assets/';
-            asset.p = fileName;
+            asset.p = ref.file;
             asset.e = 0;
             previewAsset.u = '';
-            previewAsset.p = url;
+            previewAsset.p = ref.url;
             previewAsset.e = 0;
         }
+
+        // ОПТИМИЗАЦИЯ: параллельная обработка изображений через пул из 4 воркеров.
+        // Раньше был последовательный цикл — каждый await блокировал следующий.
+        // Теперь 4 картинки конвертируются одновременно, остальные ждут в очереди.
+        const CONCURRENCY = 4;
+        const queue = [...candidates];
+
+        const imgWorker = async () => {
+            while (queue.length > 0) await processOne(queue.shift())
+        };
+
+        await Promise.all(
+            Array.from({length: Math.min(CONCURRENCY, candidates.length)}, imgWorker)
+        );
 
         stats.imageProcessingTime = performance.now() - imgT0;
         stats.phaseTiming.imageProcessing = stats.imageProcessingTime;
@@ -339,17 +387,17 @@ const Optimizer = {
             percent: 88
         });
 
-        // финализация — считаем итоги и собираем результат
+        // считаем итоги и собираем результат
         if (videoAssets.length > 0) {
             result.videoAssets = videoAssets;
         }
 
-        onProgress({ phase: 'zip', message: 'Создание ZIP...', percent: 90 });
+        onProgress({phase: 'zip', message: 'Создание ZIP...', percent: 90});
 
         const zipT0 = performance.now();
         const zipBlob = await zip.generateAsync({
             type: 'blob',
-            compression: 'STORE'
+            compression: 'DEFLATE'
         }, (meta) => {
             onProgress({
                 phase: 'zip',
@@ -377,7 +425,7 @@ const Optimizer = {
         stats.totalTime = performance.now() - totalT0;
         stats.phaseTiming.total = stats.totalTime;
 
-        onProgress({ phase: 'done', message: 'Готово!', percent: 100 });
+        onProgress({phase: 'done', message: 'Готово!', percent: 100});
 
         return {
             json: result,
@@ -392,10 +440,12 @@ const Optimizer = {
 };
 
 // для красивого вывода размера
-function formatSize(bytes) {
+const formatSize = (bytes) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
+
+export {Optimizer, formatSize};
