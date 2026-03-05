@@ -114,10 +114,6 @@ const renderStats = (container, stats, originalFileSize) => {
     // блок ВИДЕО ИЗ ПОСЛЕДОВАТЕЛЬНОСТЕЙ
     const totalSeqFound = stats.sequences + stats.videoSkipped;
     if (totalSeqFound > 0) {
-        const totalOrigVideo = stats.videoDetails.reduce((a, vd) => a + vd.originalSize, 0);
-        const videoSavedPct = totalOrigVideo > 0
-            ? ((1 - stats.videoSize / totalOrigVideo) * 100).toFixed(2) : '0.00';
-
         html += `<div class="resultCard" style="border-left-color:#6366f1">`;
         html += `<div class="rcHead">
                 <span class="rcTitle">ВИДЕО ИЗ ПОСЛЕДОВАТЕЛЬНОСТЕЙ</span>
