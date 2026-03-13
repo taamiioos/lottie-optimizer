@@ -3,11 +3,12 @@ import {Optimizer, formatSize} from '../src/optimizer.js';
 // главный скрипт
 // короткая функция вместо document.getElementById
 const $ = id => document.getElementById(id);
+const yieldToMain = () => new Promise(r => setTimeout(r, 0));
 // три демки, которые грузятся автоматически
 const DEMOS = [
-    {name: 'Lottie with Cat', file: '../samples/sample1.json'},
-    {name: 'Slideshow', file: '../samples/sample2.json'},
-    {name: 'Black Rainbow Cat', file: '../samples/sample3.json'},
+    {name: 'Lottie with Cat', file: '../samples-lottie/sample1.json'},
+    {name: 'Slideshow', file: '../samples-lottie/sample2.json'},
+    {name: 'Black Rainbow Cat', file: '../samples-lottie/sample3.json'},
 ];
 
 // создаём анимацию lottie в контейнере
@@ -332,6 +333,8 @@ async function loadAllDemos() {
 const uploadArea = $('uploadArea');
 const fileInput = $('fileInput');
 let userResult = null;
+// guard — блокирует повторный запуск пока идёт обработка файла
+let _fileHandling = false;
 uploadArea.onclick = () => fileInput.click();
 uploadArea.ondragover = (e) => {
     e.preventDefault();
@@ -340,6 +343,7 @@ uploadArea.ondragover = (e) => {
 uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
 uploadArea.ondrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     uploadArea.classList.remove('dragover');
     const file = e.dataTransfer.files[0];
     if (file && file.name.endsWith('.json')) handleUserFile(file);
@@ -394,14 +398,23 @@ const runOptimizeUserSlot = async (data, fileSize, name, settings) => {
 };
 
 const handleUserFile = async (file) => {
+    // guard — если run уже запущен, второй вызов (от дублирующего события) игнорируем
+    if (_fileHandling) return;
+    _fileHandling = true;
     $('userSlot').style.display = '';
     $('userSection').classList.add('has-result');
     $('userDownloads').style.display = 'none';
     $('user-name').textContent = file.name;
 
     try {
-        const data = JSON.parse(await file.text());
+        // PERF FIX: сначала читаем текст файла (async, не блокирует),
+        // потом отдаём поток браузеру — он успевает отрисовать UI (спиннер, имя файла),
+        // только потом запускаем синхронный JSON.parse который блокирует поток
+        const text = await file.text();
+        await yieldToMain();
+        const data = JSON.parse(text);
         userCache = { data, fileSize: file.size, name: file.name };
+        await yieldToMain();
 
         let animBefore = null;
         try { animBefore = createAnim($('user-before'), data); } catch (e) { }
@@ -424,8 +437,30 @@ const handleUserFile = async (file) => {
 
     } catch (err) {
         console.error(err);
+    } finally {
+        _fileHandling = false;
     }
 }
+
+const resetUserSlot = () => {
+    slotSettingsMap['user']?.animBefore?.destroy();
+    userResult = null;
+    userCache = null;
+    delete slotSettingsMap['user'];
+    _fileHandling = false;
+    $('userSlot').style.display = 'none';
+    $('userSection').classList.remove('has-result');
+    $('userDownloads').style.display = 'none';
+    $('user-before').innerHTML = '';
+    $('user-after').innerHTML = '';
+    $('user-stats').innerHTML = '';
+    $('dctrl-user').style.display = 'none';
+    $('user-bar').style.width = '0%';
+    $('user-bar').className = 'progressBarFill';
+    $('user-text').textContent = '';
+    $('user-name').textContent = 'Ваш файл';
+};
+$('resetUserBtn').onclick = resetUserSlot;
 
 // кнопки скачивания
 $('dlJson').onclick = () => {
@@ -460,59 +495,59 @@ const setupDemoControls = (slot, animBefore, animAfter) => {
     controls.style.display = '';
 
     const totalFrames = Math.max(0, Math.floor(animAfter.totalFrames) - 1);
+    const beforeFrames = Math.max(0, Math.floor(animBefore.totalFrames) - 1);
     scrubber.max = totalFrames;
     let playing = true;
     let scrubbing = false;
     let looping = true;
 
+    animBefore.pause();
+    animBefore.goToAndStop(0, true);
+    animAfter.goToAndStop(0, true);
+    animAfter.play();
+
     const updateLabel = (f) => {
         frameEl.textContent = `${Math.floor(f)} / ${totalFrames}`;
-    }
-
+    };
     updateLabel(0);
-
     animAfter.addEventListener('enterFrame', (e) => {
         if (scrubbing) return;
-        scrubber.value = Math.floor(e.currentTime);
+        const f = Math.floor(e.currentTime);
+        animBefore.goToAndStop(Math.min(f, beforeFrames), true);
+        scrubber.value = f;
         updateLabel(e.currentTime);
     });
 
     animAfter.addEventListener('complete', () => {
-        playing = false;
-        btnPlay.innerHTML = '▶&ensp;Играть';
+        if (!looping) {
+            playing = false;
+            btnPlay.innerHTML = '▶';
+        }
     });
 
     scrubber.addEventListener('pointerdown', () => {
         scrubbing = true;
-        if (playing) {
-            animBefore.pause();
-            animAfter.pause();
-        }
+        animAfter.pause();
     });
 
     scrubber.addEventListener('input', () => {
         const f = parseInt(scrubber.value);
-        animBefore.goToAndStop(f, true);
+        animBefore.goToAndStop(Math.min(f, beforeFrames), true);
         animAfter.goToAndStop(f, true);
         updateLabel(f);
     });
 
     scrubber.addEventListener('pointerup', () => {
         scrubbing = false;
-        if (playing) {
-            animBefore.play();
-            animAfter.play();
-        }
+        if (playing) animAfter.play();
     });
 
     btnPlay.onclick = () => {
         if (playing) {
-            animBefore.pause();
             animAfter.pause();
             playing = false;
             btnPlay.innerHTML = '▶';
         } else {
-            animBefore.play();
             animAfter.play();
             playing = true;
             btnPlay.innerHTML = '⏸';
@@ -520,8 +555,8 @@ const setupDemoControls = (slot, animBefore, animAfter) => {
     };
 
     btnStop.onclick = () => {
-        animBefore.stop();
         animAfter.stop();
+        animBefore.goToAndStop(0, true);
         playing = false;
         scrubber.value = 0;
         updateLabel(0);
@@ -529,14 +564,11 @@ const setupDemoControls = (slot, animBefore, animAfter) => {
     };
 
     speedSel.onchange = () => {
-        const stats = parseFloat(speedSel.value);
-        animBefore.setSpeed(stats);
-        animAfter.setSpeed(stats);
+        animAfter.setSpeed(parseFloat(speedSel.value));
     };
 
     btnLoop.onclick = () => {
         looping = !looping;
-        animBefore.setLoop(looping);
         animAfter.setLoop(looping);
         btnLoop.classList.toggle('active', looping);
     };

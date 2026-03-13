@@ -133,8 +133,7 @@ const VideoEncoderUtil = {
         const encodeT0 = performance.now();
 
         // определяем где ключевые кадры — первый всегда, плюс там где сцена резко изменилась
-        const keyFrameSet = _detectKeyFrames(images);
-
+        const keyFrameSet = await _detectKeyFrames(images);
         // если размер кадров совпадает с размером энкодера — canvas не нужен,
         // VideoFrame создаём прямо из ImageBitmap
         // ОПТИМИЗАЦИЯ: раньше каждый кадр проходил на canvas.
@@ -159,6 +158,8 @@ const VideoEncoderUtil = {
 
             encodingStats.framesEncoded++;
             onProgress(Math.round((i + 1) / images.length * 100), i + 1, images.length);
+
+            if (i % 10 === 9) await new Promise(r => setTimeout(r, 0));
         }
         if (!encoderError) {
             await encoder.flush();
@@ -167,6 +168,7 @@ const VideoEncoderUtil = {
         if (encoderError) throw encoderError;
         if (encodedChunks.length === 0) throw new Error('энкодер вообще ничего не выдал');
         if (!encoderConfig?.description) throw new Error('не получили avc decoder config');
+        await new Promise(r => setTimeout(r, 0));
         // теперь пакуем всё в mp4 контейнер
         const muxT0 = performance.now();
         encodingStats.encodeTime = muxT0 - encodeT0; // только сам энкодинг, без мультиплексирования
@@ -276,30 +278,35 @@ const VideoEncoderUtil = {
 };
 
 // ОПТИМИЗАЦИЯ: раньше ключевые кадры ставились механически каждые 30 кадров.
-// Теперь сравниваем соседние кадры — ключевой кадр только при реальной смене сцены.
-const _detectKeyFrames = (images, threshold = 45) => {
+const _detectKeyFrames = async (images, threshold = 45) => {
     const kf = new Set([0]); // первый всегда ключевой
     if (images.length <= 1) return kf;
     const SIZE = 32;
     const canvas = new OffscreenCanvas(SIZE, SIZE);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    let prevPixels = null;
+    let prevBuf = new Uint8ClampedArray(SIZE * SIZE * 4);
+    let currBuf = new Uint8ClampedArray(SIZE * SIZE * 4);
+    let hasPrev = false;
+
     for (let i = 0; i < images.length; i++) {
         ctx.drawImage(images[i], 0, 0, SIZE, SIZE);
-        const curr = ctx.getImageData(0, 0, SIZE, SIZE).data;
+        currBuf.set(ctx.getImageData(0, 0, SIZE, SIZE).data);
 
-        if (prevPixels) {
+        if (hasPrev) {
             let diff = 0;
-            for (let p = 0; p < curr.length; p += 4) {
-                diff += Math.abs(curr[p]     - prevPixels[p])
-                      + Math.abs(curr[p + 1] - prevPixels[p + 1])
-                      + Math.abs(curr[p + 2] - prevPixels[p + 2]);
+            for (let p = 0; p < currBuf.length; p += 4) {
+                diff += Math.abs(currBuf[p]     - prevBuf[p])
+                      + Math.abs(currBuf[p + 1] - prevBuf[p + 1])
+                      + Math.abs(currBuf[p + 2] - prevBuf[p + 2]);
             }
             if (diff / (SIZE * SIZE * 3) > threshold) kf.add(i);
         }
 
-        prevPixels = curr.slice();
+        [prevBuf, currBuf] = [currBuf, prevBuf];
+        hasPrev = true;
+
+        if (i % 10 === 9) await new Promise(r => setTimeout(r, 0));
     }
     return kf;
 }

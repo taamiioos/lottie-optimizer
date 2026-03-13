@@ -343,6 +343,36 @@ document.addEventListener('DOMContentLoaded', () => {
         $('btnPlay').disabled = !(state.json && state.zip);
     }
 
+    // сброс — очищаем всё и возвращаемся к начальному состоянию
+    const resetPlayer = () => {
+        state.anim?.destroy();
+        state.anim = null;
+        state.json = null;
+        state.zip = null;
+        // сбрасываем зоны загрузки
+        $('zoneJson').classList.remove('loaded', 'drag');
+        $('zoneZip').classList.remove('loaded', 'drag');
+        $('jsonHint').className = 'pl-zone-hint';
+        $('jsonHint').textContent = 'optimized.json';
+        $('zipHint').className = 'pl-zone-hint';
+        $('zipHint').textContent = 'assets.zip';
+        $('jsonSize').style.display = 'none';
+        $('zipSize').style.display = 'none';
+        // сбрасываем плеер и контролы
+        $('btnPlay').disabled = true;
+        $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Воспроизвести</span>';
+        $('playerWrap').style.display = 'none';
+        $('playerWrap').classList.remove('playing');
+        $('playerPlaceholder').classList.remove('hidden');
+        $('player').innerHTML = '';
+        $('playerControls').style.display = 'none';
+        $('statsSection').style.display = 'none';
+        $('statsSection').innerHTML = '';
+        setProgress(0, '');
+        pFill.classList.remove('done', 'error');
+    };
+    $('btnReset').onclick = resetPlayer;
+
     // воспроизведение
     $('btnPlay').onclick = async () => {
         $('btnPlay').disabled = true;

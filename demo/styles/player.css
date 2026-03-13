@@ -16,10 +16,10 @@
     text-decoration: none;
     color: var(--text-mute);
     font-size: 12px;
-    padding: 7px 14px;
+    padding: 8px 18px;
     background: #1e293b;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     transition: border-color 0.2s, color 0.2s, background 0.2s;
     white-space: nowrap;
 }
@@ -185,17 +185,17 @@
 }
 
 .pl-play-btn {
-    padding: 11px 30px;
+    padding: 11px 22px;
     background: linear-gradient(135deg, var(--primary), var(--primary-d));
     border: none;
     border-radius: var(--radius-sm);
     color: #fff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     flex-shrink: 0;
     transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
     box-shadow: 0 4px 14px rgba(99,102,241,0.35);

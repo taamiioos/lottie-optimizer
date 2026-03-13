@@ -72,8 +72,9 @@ const Optimizer = {
 
         const totalT0 = performance.now();
         // делаем глубокие копии, чтобы не портить оригинальные данные
-        const result = JSON.parse(JSON.stringify(data));
-        const preview = JSON.parse(JSON.stringify(data));
+        // не гоняет данные через строку и обратно
+        const result = structuredClone(data);
+        const preview = { ...data, assets: JSON.parse(JSON.stringify(data.assets || [])) };
         const assets = result.assets || [];
         const previewAssets = preview.assets || [];
         const zip = new JSZip();
@@ -131,20 +132,19 @@ const Optimizer = {
         );
 
         // анализ — считаем статистику из уже загруженных блобов
-        for (const asset of assets) {
-            if (!asset.p?.startsWith('data:image')) continue;
+        await Promise.all(assets.map(async asset => {
+            if (!asset.p?.startsWith('data:image')) return;
             stats.totalImages++;
             const blob = blobCache.get(asset.id);
-            if (blob) {
-                const sz = blob.size;
-                stats.sizeBefore += sz;
-                if (sz > stats.largestImage) stats.largestImage = sz;
-                if (sz < stats.smallestImage) stats.smallestImage = sz;
-                const bytes = new Uint8Array(await blob.arrayBuffer());
-                const fmt = ImageProcessor.detectFormat(bytes);
-                stats.formats[fmt] = (stats.formats[fmt] || 0) + 1;
-            }
-        }
+            if (!blob) return;
+            const sz = blob.size;
+            stats.sizeBefore += sz;
+            if (sz > stats.largestImage) stats.largestImage = sz;
+            if (sz < stats.smallestImage) stats.smallestImage = sz;
+            const header = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+            const fmt = ImageProcessor.detectFormat(header);
+            stats.formats[fmt] = (stats.formats[fmt] || 0) + 1;
+        }));
         if (stats.totalImages > 0) {
             stats.avgImageSize = Math.round(stats.sizeBefore / stats.totalImages);
         }
@@ -220,7 +220,7 @@ const Optimizer = {
                     }
 
                     const videoFile = `video/seq_${videoCounter}.mp4`;
-                    zip.file(videoFile, videoResult.blob);
+                    zip.file(videoFile, videoResult.blob, { compression: 'STORE' });
 
                     const videoDetail = {
                         id: `video_${videoCounter}`,
@@ -347,7 +347,7 @@ const Optimizer = {
                 });
 
                 const fileName = `img_${hash.slice(0, 8)}.${ext}`;
-                zip.file(`assets/${fileName}`, outBlob);
+                zip.file(`assets/${fileName}`, outBlob, { compression: 'STORE' });
                 const url = URL.createObjectURL(outBlob);
                 blobUrls.push(url);
                 hashMap.set(hash, {file: fileName, url});

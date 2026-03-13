@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video to Lottie</title>
+    <link rel="stylesheet" href="../demo/styles/optimizer.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app vtl-app">
+
+    <header class="app-header">
+        <div class="app-header-brand">
+            <div class="app-logo">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="6" width="15" height="12" rx="2"/>
+                    <path d="M17 9l5-3v12l-5-3"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="app-title">Video to Lottie</h1>
+            </div>
+        </div>
+        <div class="app-header-nav">
+            <a href="../demo/optimizer.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+                Оптимизатор
+            </a>
+            <a href="../demo/player.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+                Плеер
+            </a>
+        </div>
+    </header>
+
+    <div id="uploadArea" class="uploadArea">
+        <div class="uploadIcon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+        </div>
+        <div class="uploadText">Перетащите видео или нажмите для загрузки</div>
+        <input type="file" id="fileInput" accept="video/*" hidden>
+    </div>
+
+    <div id="videoInfo" class="vtl-card" hidden>
+        <div class="statsGrid">
+            <div class="statBox">
+                <div class="statLabel">Файл</div>
+                <div id="infoName" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Разрешение</div>
+                <div id="infoRes" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Длительность</div>
+                <div id="infoDur" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Оценка кадров</div>
+                <div id="infoEst" class="statValue vtl-stat-sm">—</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsBlock" class="vtl-card vtl-settings" hidden>
+        <div class="slotSettingRow">
+            <label class="vtl-setting-label">FPS</label>
+            <input type="range" id="fpsRange" min="1" max="30" step="1" value="24" class="slotRange">
+            <span id="fpsVal" class="slotRangeVal">24</span>
+        </div>
+        <div class="slotSettingRow">
+            <label class="vtl-setting-label">Макс. кадров</label>
+            <input type="range" id="maxFramesRange" min="10" max="500" step="10" value="150" class="slotRange">
+            <span id="maxFramesVal" class="slotRangeVal">150</span>
+        </div>
+        <div class="slotSettingRow">
+            <label class="vtl-setting-label">Качество WebP</label>
+            <input type="range" id="qualityRange" min="0.1" max="1" step="0.05" value="0.85" class="slotRange">
+            <span id="qualityVal" class="slotRangeVal">0.85</span>
+        </div>
+        <div class="vtl-btns">
+            <button id="convertBtn" class="dlBtn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                Конвертировать
+            </button>
+            <button id="resetSettingsBtn" class="tool-reset-btn">
+                Другой файл
+            </button>
+        </div>
+    </div>
+
+    <div id="progressBlock" class="vtl-card" hidden>
+        <div class="progressBarTrack">
+            <div id="progressFill" class="progressBarFill"></div>
+        </div>
+        <p id="progressText" class="progressText">...</p>
+    </div>
+
+    <div id="resultBlock" class="vtl-card" hidden>
+        <div class="statsGrid">
+            <div class="statBox">
+                <div class="statLabel">Кадров</div>
+                <div id="resFrames" class="statValue">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">FPS</div>
+                <div id="resFps" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Разрешение</div>
+                <div id="resRes" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Размер JSON</div>
+                <div id="resSize" class="statValue vtl-stat-sm">—</div>
+            </div>
+        </div>
+        <p id="resWarning" class="vtl-warning" hidden></p>
+        <div class="vtl-btns">
+            <button id="downloadBtn" class="dlBtn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Скачать JSON
+            </button>
+<a href="../demo/optimizer.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+                Оптимизировать
+            </a>
+            <button id="resetBtn" class="tool-reset-btn">
+                Новый файл
+            </button>
+        </div>
+        <div id="previewBox" class="vtl-preview"></div>
+    </div>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

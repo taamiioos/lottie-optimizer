@@ -14,12 +14,23 @@
 <main class="app">
     <header class="app-header">
         <div class="app-header-brand">
-            <div class="app-logo">⚡</div>
+            <div class="app-logo">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+            </div>
             <div>
                 <h1 class="app-title">Lottie Optimizer</h1>
             </div>
         </div>
-        <a href="./player.html" class="nav-btn">▶&ensp;Открыть плеер</a>
+        <div class="app-header-nav">
+            <a href="../video-to-lottie/index.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="15" height="12" rx="2"/><path d="M17 9l5-3v12l-5-3"/></svg>
+                Video to Lottie
+            </a>
+            <a href="./player.html" class="nav-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+                Плеер
+            </a>
+        </div>
     </header>
 
     <section class="demoSection">
@@ -146,12 +157,19 @@
     <section class="userSection" id="userSection">
         <div class="uploadArea" id="uploadArea">
             <input type="file" id="fileInput" accept=".json" hidden>
-            <div class="uploadIcon">+</div>
+            <div class="uploadIcon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </div>
             <div class="uploadText">Перетащите .json или нажмите для загрузки</div>
         </div>
 
         <div class="userSlot" id="userSlot" style="display:none">
-            <div class="demoName" id="user-name">Ваш файл</div>
+            <div class="demoName">
+                <span id="user-name">Ваш файл</span>
+                <button class="tool-reset-btn" id="resetUserBtn">
+                    Новый файл
+                </button>
+            </div>
 
             <div class="demoPair">
                 <div class="demoCard">
@@ -190,13 +208,17 @@
             </div>
             <div class="demoStats" id="user-stats"></div>
             <div class="userDownloads" id="userDownloads" style="display:none">
-                <button class="dlBtn" id="dlJson">⬇&ensp;Скачать JSON</button>
-                <button class="dlBtn dlBtn--zip" id="dlZip">⬇&ensp;Скачать ZIP</button>
+                <button class="dlBtn" id="dlJson">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Скачать JSON
+                </button>
+                <button class="dlBtn dlBtn--zip" id="dlZip">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                    Скачать ZIP
+                </button>
             </div>
         </div>
     </section>
-
-
 </main>
 </body>
 </html>
