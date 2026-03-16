@@ -1,8 +1,10 @@
+
 .pl-app {
-    max-width: 1500px;
+    max-width: 2000px;
     margin: 0 auto;
     padding: 0 16px 64px;
 }
+
 .pl-nav {
     display: flex;
     align-items: center;
@@ -10,6 +12,15 @@
     padding: 22px 0 20px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 24px;
+
+}
+
+.app-header-nav-player {
+    gap: 8px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: right;
 }
 
 .pl-back {
@@ -26,7 +37,7 @@
 
 .pl-back:hover {
     border-color: var(--primary);
-    background: rgba(99,102,241,0.06);
+    background: rgba(99, 102, 241, 0.06);
     color: var(--text);
 }
 
@@ -41,8 +52,8 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
-    border: 1px solid rgba(99,102,241,0.15);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(99, 102, 241, 0.02));
+    border: 1px solid rgba(99, 102, 241, 0.15);
     border-radius: var(--radius-lg);
     padding: 18px 20px;
     margin-bottom: 20px;
@@ -105,7 +116,7 @@
     border-radius: var(--radius-lg);
     overflow: hidden;
     margin-bottom: 20px;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 
 .pl-zones {
@@ -135,20 +146,21 @@
 }
 
 .pl-zone:hover {
-    background: rgba(99,102,241,0.06);
+    background: rgba(99, 102, 241, 0.06);
 }
 
 .pl-zone.drag {
-    background: rgba(99,102,241,0.1);
+    background: rgba(99, 102, 241, 0.1);
     outline: 2px dashed var(--primary);
     outline-offset: -10px;
 }
 
 .pl-zone.loaded {
-    background: rgba(16,185,129,0.05);
-    outline: 1px solid rgba(16,185,129,0.2);
+    background: rgba(16, 185, 129, 0.05);
+    outline: 1px solid rgba(16, 185, 129, 0.2);
     outline-offset: -1px;
 }
+
 .pl-zone-label {
     font-size: 13px;
     font-weight: 600;
@@ -175,6 +187,7 @@
     color: var(--text-dim);
     margin-top: 2px;
 }
+
 .pl-footer {
     padding: 14px 18px;
     display: flex;
@@ -198,7 +211,7 @@
     gap: 8px;
     flex-shrink: 0;
     transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
-    box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .pl-play-icon {
@@ -208,7 +221,7 @@
 .pl-play-btn:hover:not(:disabled) {
     opacity: 0.88;
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(99,102,241,0.45);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
 }
 
 .pl-play-btn:disabled {
@@ -226,6 +239,7 @@
     gap: 5px;
     min-width: 0;
 }
+
 .pl-player-wrap {
     position: relative;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -237,9 +251,9 @@
 }
 
 .pl-player-wrap.playing {
-    border-color: rgba(99,102,241,0.35);
-    box-shadow: 0 0 40px rgba(99,102,241,0.12),
-                0 0 80px rgba(99,102,241,0.06);
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 0 40px rgba(99, 102, 241, 0.12),
+    0 0 80px rgba(99, 102, 241, 0.06);
 }
 
 #player {
@@ -250,7 +264,7 @@
 
 #player canvas {
     display: block;
-    width:  100% !important;
+    width: 100% !important;
     height: 100% !important;
 }
 
@@ -262,7 +276,7 @@
     align-items: center;
     justify-content: center;
     gap: 14px;
-    background: rgba(2,6,23,0.92);
+    background: rgba(2, 6, 23, 0.92);
     backdrop-filter: blur(4px);
     transition: opacity 0.35s;
     pointer-events: none;
@@ -279,7 +293,7 @@
 
 .pl-placeholder-text {
     font-size: 14px;
-    color: rgba(255,255,255,0.22);
+    color: rgba(255, 255, 255, 0.22);
     font-weight: 500;
 }
 
@@ -292,7 +306,7 @@
 }
 
 .pl-player-wrap.playing + .pl-controls {
-    border-color: rgba(99,102,241,0.35);
+    border-color: rgba(99, 102, 241, 0.35);
 }
 
 .pl-scrubber-row {
@@ -336,7 +350,7 @@
     background: var(--primary);
     cursor: pointer;
     transition: transform 0.15s, background 0.15s;
-    box-shadow: 0 0 8px rgba(99,102,241,0.5);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
 }
 
 .pl-scrubber::-webkit-slider-thumb:hover {
@@ -351,7 +365,7 @@
     background: var(--primary);
     cursor: pointer;
     border: none;
-    box-shadow: 0 0 8px rgba(99,102,241,0.5);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
 }
 
 .pl-ctrl-row {
@@ -404,19 +418,19 @@
 }
 
 .pl-ctrl-loop {
-    background: rgba(99,102,241,0.08);
+    background: rgba(99, 102, 241, 0.08);
     font-size: 20px;
     padding: 2px 8px;
 }
 
 .pl-ctrl-loop.active {
-    border-color: rgba(99,102,241,0.35);
+    border-color: rgba(99, 102, 241, 0.35);
     color: var(--primary-l);
 }
 
 .pl-ctrl-loop.active:hover {
-    background: rgba(99,102,241,0.15);
-    border-color: rgba(99,102,241,0.5);
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.5);
 }
 
 .pl-speed-sel {
@@ -471,7 +485,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .pl-card-title {

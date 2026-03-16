@@ -3,8 +3,6 @@
     margin: 0;
     padding: 0;
 }
-
-/* браузерный [hidden] перебивается любым display из CSS — фиксируем */
 [hidden] { display: none !important; }
 
 html {
@@ -271,13 +269,6 @@ body {
     box-shadow: var(--shadow-card);
 }
 
-.demoSlot:hover {
-    transform: translateY(-3px);
-    border-color: rgba(99, 102, 241, 0.3);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(99, 102, 241, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
 
 .demoName {
     padding: 13px 16px;
@@ -757,7 +748,7 @@ body {
 }
 
 .dCtrlBtn {
-    padding: 5px 5px;
+    padding: 5px 7px;
     background: #1a2537;
     border: 1px solid #2d3f58;
     border-radius: 6px;
@@ -777,7 +768,7 @@ body {
 
 .dCtrlStop {
     padding: 1px 8px;
-    font-size: 20px;
+    font-size: 18px;
 }
 
 .dCtrlPlay {
@@ -785,7 +776,7 @@ body {
     border-color: transparent;
     color: #fff;
     font-size: 13px;
-    padding: 8px 8px;
+    padding: 4px 10px;
     font-weight: 600;
 }
 
@@ -806,8 +797,8 @@ body {
     border-color: rgba(99, 102, 241, 0.35);
     color: var(--primary-l);
     background: rgba(99, 102, 241, 0.08);
-    font-size: 20px;
-    padding: 2px 8px;
+    font-size: 18px;
+    padding: 1px 8px;
 
 }
 
@@ -817,7 +808,7 @@ body {
 }
 
 .dCtrlSpeed {
-    padding: 8px 8px;
+    padding: 5px 1px;
     background: #1a2537;
     border: 1px solid #2d3f58;
     border-radius: 6px;
@@ -827,7 +818,6 @@ body {
     outline: none;
     -webkit-appearance: none;
     appearance: none;
-    min-width: 52px;
     text-align: center;
     transition: border-color 0.2s, color 0.2s;
 }
@@ -1009,8 +999,6 @@ body {
     flex-shrink: 0;
 }
 
-/* ---- общие компоненты для всех инструментов ---- */
-
 .app-header-nav {
     display: flex;
     align-items: center;
@@ -1024,7 +1012,6 @@ body {
     margin-top: 3px;
 }
 
-/* вторичная навигационная ссылка */
 .nav-btn-secondary {
     display: inline-flex;
     align-items: center;
@@ -1045,7 +1032,6 @@ body {
     color: var(--text);
 }
 
-/* кнопка сброса / загрузить другой */
 .tool-reset-btn {
     display: inline-flex;
     align-items: center;
@@ -1067,7 +1053,6 @@ body {
     transform: translateY(-1px);
 }
 
-/* кнопки скачивания с иконками */
 .dlBtn {
     display: inline-flex;
     align-items: center;
@@ -1075,7 +1060,6 @@ body {
     gap: 7px;
 }
 
-/* иконки в nav-btn и nav-btn-secondary */
 .nav-btn svg,
 .nav-btn-secondary svg {
     flex-shrink: 0;
