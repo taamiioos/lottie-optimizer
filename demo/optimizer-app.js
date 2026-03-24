@@ -1,8 +1,7 @@
-import {formatSize} from '../src/optimizer.js';
 import {Optimizer} from '../src/index.js';
 
-// короткая функция вместо document.getElementById
 const $ = id => document.getElementById(id);
+// отдаёт управление браузеру между тяжёлыми операциями — страница не замерзает при разборе большого json
 const yieldToMain = () => new Promise(r => setTimeout(r, 0));
 // три демки
 const DEMOS = [
@@ -28,7 +27,7 @@ const createAnim = (container, data) => {
 const fmtTime = (ms) => (ms < 1000) ? ms.toFixed(0) + ' мс' : (ms / 1000).toFixed(2) + ' с';
 
 // рендерим всю статистику в блоке
-const renderStats = (container, stats, originalFileSize) => {
+const renderStats = (container, stats, originalFileSize, animData) => {
     const jsonAfter = stats.optimizedJsonSize;
     const zipSize = stats.zipFileSize;
     const totalAfter = jsonAfter + zipSize;
@@ -88,6 +87,10 @@ const renderStats = (container, stats, originalFileSize) => {
     html += `<span class="tZip">ZIP&nbsp;${fmtTime(pt.zip || 0)}</span>`;
     html += '</div>';
     html += '<table class="statsTable">';
+    if (animData && animData.fr > 0) {
+        const animDurSec = (animData.op - animData.ip) / animData.fr;
+        html += `<tr><td>Длительность анимации</td><td>${animDurSec.toFixed(2)} с</td></tr>`;
+    }
     html += `<tr><td>Общее время оптимизации</td><td>${fmtTime(stats.totalTime)}</td></tr>`;
 
     if (stats.totalImages > 0 && stats.totalTime > 0) {
@@ -210,16 +213,21 @@ const renderStats = (container, stats, originalFileSize) => {
         html += `<div class="resultCard" style="border-left-color:var(--accent)">`;
         html += `<div class="rcHead"> <span class="rcTitle">ОДИНОЧНЫЕ ИЗОБРАЖЕНИЯ</span> </div>`;
 
-        const imgSavedPct = stats.sizeBefore > 0
-            ? ((stats.sizeBefore - stats.sizeAfter) / stats.sizeBefore * 100).toFixed(1)
+        const singleBefore = stats.singleImagesSizeBefore || 0;
+        const singleAfter  = stats.sizeAfter || 0;
+        const singleSavedPct = singleBefore > 0
+            ? ((singleBefore - singleAfter) / singleBefore * 100).toFixed(1)
             : '0.0';
+        const singleRatio = singleBefore > 0
+            ? (singleAfter / singleBefore * 100).toFixed(1)
+            : '100.0';
 
         const imgItems = [
             ['Всего уникальных', `${stats.uniqueImages || 0} шт.`],
         ];
 
         if (stats.duplicates > 0) {
-            imgItems.push(['Из них дубликатов', `${stats.duplicates} шт.`, 'rtVal--warn']);
+            imgItems.push(['Дубликатов (объединено)', `${stats.duplicates} шт.`, 'rtVal--warn']);
         }
 
         imgItems.push(
@@ -227,21 +235,14 @@ const renderStats = (container, stats, originalFileSize) => {
         );
 
         if (stats.keptOriginal > 0) {
-            imgItems.push(['Оставлено в оригинальном формате', `${stats.keptOriginal} шт.`]);
+            imgItems.push(['Формат не изменён (WebP хуже)', `${stats.keptOriginal} шт.`]);
         }
 
         imgItems.push(
-            ['Размер до оптимизации', formatSize(stats.sizeBefore || 0)],
-            ['Размер после конвертации', formatSize(stats.sizeAfter || 0)]
-        );
-
-        if (stats.webpSavings > 0) {
-            imgItems.push(['Экономия благодаря WebP', formatSize(stats.webpSavings), 'rtVal--accent']);
-        }
-
-        imgItems.push(
-            ['Степень сжатия', `${parseFloat(stats.compressionRatio || 0).toFixed(1)} %`],
-            ['Общая экономия по размеру', `${imgSavedPct} %`]
+            ['Размер до', formatSize(singleBefore)],
+            ['Размер после', formatSize(singleAfter)],
+            ['Степень сжатия', `${singleRatio} %`],
+            ['Экономия', `${singleSavedPct} %`, singleSavedPct > 0 ? 'rtVal--accent' : '']
         );
 
         html += `<div class="rtBody">${rows(imgItems)}</div>`;
@@ -252,7 +253,8 @@ const renderStats = (container, stats, originalFileSize) => {
     container.innerHTML = html;
 }
 
-// оптимизируем одну демку или пользовательский файл
+// хранит readSettings и ссылку на animBefore для каждого слота (демки и пользовательского)
+// нужен чтобы не создавать панель настроек заново при ре-оптимизации
 const slotSettingsMap = {};
 
 const runOptimizeSlot = async (data, index, fileName, fileSize, settings) => {
@@ -285,7 +287,7 @@ const runOptimizeSlot = async (data, index, fileName, fileSize, settings) => {
         } catch (e) {
         }
 
-        renderStats(statsEl, result.stats, fileSize);
+        renderStats(statsEl, result.stats, fileSize, data);
 
         const animBefore = slotSettingsMap[index]?.animBefore;
         if (animBefore && animAfter) setupDemoControls(index.toString(), animBefore, animAfter);
@@ -321,7 +323,8 @@ const optimizeSlotByIndex = async (data, index, fileName, fileSize) => {
             await runOptimizeSlot(data, index, fileName, fileSize, s);
         });
         slotEl.insertBefore(el, statsEl);
-        slotSettingsMap[index] = {readSettings, animBefore};
+        slotSettingsMap
+            [index] = {readSettings, animBefore};
     } else {
         slotSettingsMap[index].animBefore = animBefore;
     }
@@ -330,7 +333,7 @@ const optimizeSlotByIndex = async (data, index, fileName, fileSize) => {
     return runOptimizeSlot(data, index, fileName, fileSize, settings);
 }
 
-// кэш для ре-оптимизации
+// кэш оригинальных данных — чтобы можно было перезапустить оптимизацию с другими настройками без повторного fetch
 const demoCache = [];
 let userCache = null;
 
@@ -342,7 +345,7 @@ function createSlotSettings(slotId, onApply) {
         <div class="slotSettingsControls">
             <div class="slotSettingRow">
                 <span class="slotSettingLabel">Качество WebP</span>
-                <input type="range" class="slotRange" id="${slotId}-webp" min="0.1" max="1" step="0.05" value="0.8">
+                <input type="range" class="slotRange" id="${slotId}-webp" min="0.1" max="0.95" step="0.05" value="0.8">
                 <span class="slotRangeVal" id="${slotId}-webp-val">0.80</span>
             </div>
         </div>
@@ -397,7 +400,6 @@ async function loadAllDemos() {
 const uploadArea = $('uploadArea');
 const fileInput = $('fileInput');
 let userResult = null;
-// guard — блокирует повторный запуск пока идёт обработка файла
 let _fileHandling = false;
 uploadArea.onclick = () => fileInput.click();
 uploadArea.ondragover = (e) => {
@@ -452,7 +454,7 @@ const runOptimizeUserSlot = async (data, fileSize, name, settings) => {
         } catch (e) {
         }
 
-        renderStats(statsEl, result.stats, fileSize);
+        renderStats(statsEl, result.stats, fileSize, data);
         if (animBefore && animAfter) setupDemoControls('user', animBefore, animAfter);
         userDl.style.display = 'flex';
 

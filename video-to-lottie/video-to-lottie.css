@@ -1,0 +1,120 @@
+.vtl-app {
+    max-width: 1500px;
+}
+
+.vtl-app .uploadArea {
+    margin-bottom: 16px;
+}
+
+.vtl-card {
+    background: rgba(15, 23, 42, 0.52);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    margin-bottom: 16px;
+}
+
+.vtl-main-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.vtl-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    opacity: 0.6;
+    margin: 2px 0;
+}
+
+.vtl-setting-label {
+    width: 110px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-mute);
+}
+
+.vtl-stat-sm {
+    font-size: 15px;
+    word-break: break-all;
+}
+
+.vtl-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 4px;
+}
+
+.vtl-footer-btns {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.vtl-footer-progress {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+
+.vtl-footer-progress .progressBarTrack {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    min-width: 0;
+}
+
+.vtl-footer-progress .progressText {
+    margin-top: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vtl-btns {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.vtl-warning {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: rgba(245, 158, 11, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: var(--radius-sm);
+    color: #f59e0b;
+    font-size: 12px;
+}
+
+.vtl-preview {
+    margin-top: 20px;
+    aspect-ratio: 16 / 9;
+    background: rgba(2, 6, 23, 0.75);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.vtl-preview canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+}

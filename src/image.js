@@ -1,30 +1,44 @@
 // обработка изображений с фоллбэком на webp
 const ImageProcessor = {
-    _webpSupported: null, // кэшируем результат проверки, чтобы не проверять каждый раз
+    _webpSupported: null,
     async canWebP() {
-
         if (this._webpSupported !== null) return this._webpSupported;
-
-        const canvas = document.createElement("canvas");
-
-        this._webpSupported =
-            canvas.toDataURL("image/webp").startsWith("data:image/webp");
-
-        return this._webpSupported;
+        if (typeof OffscreenCanvas !== 'undefined') {
+            try {
+                const blob = await new OffscreenCanvas(1, 1).convertToBlob({type: 'image/webp'});
+                this._webpSupported = blob.type === 'image/webp';
+            } catch {
+                this._webpSupported = false;
+            }
+            return this._webpSupported;
+        }
+        if (typeof document !== 'undefined') {
+            const canvas = document.createElement("canvas");
+            this._webpSupported = canvas.toDataURL("image/webp").startsWith("data:image/webp");
+            return this._webpSupported;
+        }
+        this._webpSupported = false;
+        return false;
     },
 
-    // разбираем base64 data url на mime и байты
-    async decodeBase64(dataUrl) {
+    // разбор base64 data url на mime и байты
+    decodeBase64(dataUrl) {
         try {
-            const res = await fetch(dataUrl);
-            const blob = await res.blob();
-            return blob;
+            const comma = dataUrl.indexOf(',');
+            if (comma === -1) return null;
+            const mime = dataUrl.slice(5, comma).split(';')[0] || 'image/png';
+            const b64 = dataUrl.slice(comma + 1);
+            const binary = atob(b64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], {type: mime});
         } catch {
             return null;
         }
     },
 
-    // считаем sha-256 хеш от байтов
+    // sha-256
     async hash(bytes) {
         const buf = await crypto.subtle.digest('SHA-256', bytes);
         return Array.from(new Uint8Array(buf))
@@ -32,7 +46,7 @@ const ImageProcessor = {
             .join('');
     },
 
-    // определяем формат по первым байтам
+    // формат по первым байтам
     detectFormat(bytes) {
         if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'png';
         if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'jpeg';
@@ -41,7 +55,7 @@ const ImageProcessor = {
         return 'png';
     },
 
-    // возвращаем нормальное расширение для формата
+    // нормальное расширение для формата
     extFromFormat(format) {
         const map = {
             png: 'png',
@@ -53,9 +67,8 @@ const ImageProcessor = {
         return map[format] || 'png';
     },
 
-    // конвертируем любой blob в webp через canvas
+    // любой blob в webp через canvas
     async toWebP(blob, quality = 0.8) {
-
         const bitmap = await createImageBitmap(blob);
 
         try {
@@ -94,22 +107,21 @@ const ImageProcessor = {
         }
     },
 
-    // главная функция
-    async process(blob, quality = 0.8) {
+    // конвертирует в webp если браузер поддерживает и если итог меньше оригинала
+    // иначе возвращает оригинальный blob без изменений
+    async process(blob, quality = 0.8, hintBytes = null) {
         const supportsWebP = await this.canWebP();
-        // если браузер поддерживает webp — пробуем сжать
         if (supportsWebP) {
             try {
                 const webpBlob = await this.toWebP(blob, quality);
-                // если webp получился меньше оригинала — возвращаем его
                 if (webpBlob && webpBlob.size < blob.size) {
                     return { blob: webpBlob, format: 'webp' };
                 }
             } catch (e) {
             }
         }
-        // если webp не поддерживается или не помог — возвращаем оригинал + определяем его формат
-        const bytes = new Uint8Array(await blob.arrayBuffer());
+        // webp не выиграл или не поддерживается — определяем формат по байтам и возвращаем как есть
+        const bytes = hintBytes ?? new Uint8Array(await blob.arrayBuffer());
         const format = this.detectFormat(bytes);
         return { blob, format };
     }

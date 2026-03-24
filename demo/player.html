@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Lottie Плеер</title>
+    <title>Lottie Player</title>
+    <link rel="stylesheet" href="./styles/common.css">
     <link rel="stylesheet" href="./styles/optimizer.css">
     <link rel="stylesheet" href="./styles/player.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
@@ -14,18 +15,21 @@
 <body>
 <main class="pl-app">
     <nav class="pl-nav">
-        <a href="../demo/optimizer.html" class="nav-btn-secondary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/>
-            </svg>
-            Lottie Optimizer
-        </a>
-        <h1 class="pl-title">Lottie Плеер</h1>
+        <div class="app-header-nav-player">
+
+            <a href="../demo/optimizer.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/>
+                </svg>
+                Lottie Optimizer
+            </a>
+            <h1 class="pl-title">Lottie Плеер</h1>
+        </div>
         <div class="app-header-nav-player">
             <button class="tool-reset-btn" id="btnReset">
                 Сбросить
             </button>
-            <a href="./video-to-lottie.html" class="nav-btn-secondary">
+            <a href="../video-to-lottie/video-to-lottie.html" class="nav-btn-secondary">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                      stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="6" width="15" height="12" rx="2"/>
@@ -78,6 +82,7 @@
                 <span class="pl-zone-size" id="zipSize" style="display:none"></span>
             </div>
         </div>
+        <div class="pl-compat-status" id="compatStatus"></div>
         <div class="pl-footer">
             <button class="pl-play-btn" id="btnPlay" disabled>
                 <span class="pl-play-icon">▶</span>

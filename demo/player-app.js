@@ -1,4 +1,4 @@
-import {restoreAnimation, validateFilesMatch} from '../src/player.js';
+import {Player} from '../src/index.js';
 
 const $ = id => document.getElementById(id);
 
@@ -10,6 +10,7 @@ const fmt = (bytes) => {
 };
 const fmtTime = (ms) => ms < 1000 ? ms.toFixed(0) + ' мс' : (ms / 1000).toFixed(2) + ' с';
 
+// глобальное состояние плеера: загруженные файлы и текущая анимация
 const state = {json: null, zipBlob: null, anim: null};
 
 // зоны перетаскивания файлов
@@ -31,28 +32,64 @@ const setupZone = (zoneId, inputId, onFile) => {
 
 setupZone('zoneJson', 'jsonInput', async (file) => {
     try { state.json = JSON.parse(await file.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', file.name, file.size); }
-    catch (err) { console.error(err); }
+    catch { showCompatStatus('error', 'Файл не является валидным JSON'); return; }
     checkReady();
+    checkCompatibility();
 });
 
 setupZone('zoneZip', 'zipInput', (file) => {
     state.zipBlob = file;
     markZoneLoaded('zoneZip', 'zipHint', 'zipSize', file.name, file.size);
     checkReady();
+    checkCompatibility();
 });
 
 $('jsonInput').onchange = async (e) => {
     const f = e.target.files[0];
-    if (f) { try { state.json = JSON.parse(await f.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', f.name, f.size); } catch {} checkReady(); }
+    if (f) {
+        try { state.json = JSON.parse(await f.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', f.name, f.size); }
+        catch { showCompatStatus('error', 'Файл не является валидным JSON'); e.target.value = ''; return; }
+        checkReady();
+        checkCompatibility();
+    }
     e.target.value = '';
 };
 $('zipInput').onchange = (e) => {
     const f = e.target.files[0];
-    if (f) { state.zipBlob = f; markZoneLoaded('zoneZip', 'zipHint', 'zipSize', f.name, f.size); checkReady(); }
+    if (f) {
+        state.zipBlob = f;
+        markZoneLoaded('zoneZip', 'zipHint', 'zipSize', f.name, f.size);
+        checkReady();
+        checkCompatibility();
+    }
     e.target.value = '';
 };
 
-const checkReady = () => { $('btnPlay').disabled = !(state.json && state.zipBlob); };
+// кнопка активна как только загружен JSON
+const checkReady = () => { $('btnPlay').disabled = !state.json; };
+
+// статус совместимости файлов
+const showCompatStatus = (type, message) => {
+    const el = $('compatStatus');
+    el.className = `pl-compat-status pl-compat-${type}`;
+    const icon = type === 'ok' ? '✓' : type === 'warn' ? '⚠' : '✗';
+    el.textContent = `${icon} ${message}`;
+};
+
+const checkCompatibility = async () => {
+    if (!state.json) { $('compatStatus').className = 'pl-compat-status'; $('compatStatus').textContent = ''; return; }
+    const result = await Player.validate(state.json, state.zipBlob);
+    if (result.errors.length > 0) {
+        // нужен ZIP, но ещё не загружен — это не ошибка совместимости, а подсказка
+        if (result.requiresZip && !state.zipBlob) {
+            showCompatStatus('warn', 'Нужен ZIP архив');
+        } else {
+            showCompatStatus('error', 'Файлы несовместимы');
+        }
+    } else {
+        showCompatStatus('ok', result.requiresZip ? 'Файлы совместимы' : 'Файл готов');
+    }
+};
 
 // сброс
 const resetPlayer = () => {
@@ -73,6 +110,8 @@ const resetPlayer = () => {
     $('statsSection').innerHTML = '';
     setProgress(0, '');
     $('progressFill').classList.remove('done', 'error');
+    $('compatStatus').className = 'pl-compat-status';
+    $('compatStatus').textContent = '';
 };
 $('btnReset').onclick = resetPlayer;
 
@@ -84,27 +123,27 @@ const setProgress = (pct, text) => {
 // воспроизведение
 $('btnPlay').onclick = async () => {
     $('btnPlay').disabled  = true;
-    $('btnPlay').textContent = 'Декодирование...';
+    $('btnPlay').innerHTML = '<span>Загрузка...</span>';
     $('progressFill').classList.remove('done', 'error');
-    setProgress(0, 'Запуск...');
+    setProgress(0, 'Проверка файлов...');
 
     const totalT0 = performance.now();
 
     try {
-        setProgress(2, 'Проверка файлов...');
-        const errors = await validateFilesMatch(state.json, state.zipBlob);
-        if (errors.length > 0) {
+        const compat = await Player.validate(state.json, state.zipBlob);
+        if (compat.errors.length > 0) {
+            showCompatStatus('error', compat.errors[0]);
             $('progressFill').classList.add('error');
-            setProgress(100, errors[0]);
+            setProgress(100, compat.errors[0]);
             $('btnPlay').disabled = false;
             $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Воспроизвести</span>';
             return;
         }
 
-        const {data, stats} = await restoreAnimation(state.json, state.zipBlob, {
+        const {data, stats} = await Player.restoreInWorker(state.json, state.zipBlob || null, {
             onProgress: (info) => {
                 if (info.phase === 'images') {
-                    setProgress(5 + Math.round(info.percent * 0.30), `Картинка ${info.current}/${info.total}`);
+                    setProgress(5 + Math.round(info.percent * 0.85), `Картинка ${info.current}/${info.total}`);
                 } else if (info.phase === 'video') {
                     setProgress(35 + Math.round(info.percent * 0.50), info.message);
                 }
@@ -116,7 +155,11 @@ $('btnPlay').onclick = async () => {
 
         state.anim?.destroy();
         $('player').innerHTML = '';
-        if (data.w && data.h) $('player').style.aspectRatio = `${data.w} / ${data.h}`;
+
+        // показываем обёртку ДО loadAnimation — иначе Lottie читает offsetWidth/Height = 0
+        $('playerWrap').style.display = '';
+        $('playerWrap').classList.add('playing');
+        $('playerPlaceholder').classList.add('hidden');
 
         state.anim = lottie.loadAnimation({
             container: $('player'), renderer: 'canvas', loop: true, autoplay: true, animationData: data
@@ -125,10 +168,6 @@ $('btnPlay').onclick = async () => {
         stats.lottieInitTime = performance.now() - lottieT0;
         stats.totalTime      = performance.now() - totalT0;
         stats.animJson       = state.json;
-
-        $('playerWrap').style.display = '';
-        $('playerWrap').classList.add('playing');
-        $('playerPlaceholder').classList.add('hidden');
         $('progressFill').classList.add('done');
         setProgress(100, fmtTime(stats.totalTime));
 
@@ -161,8 +200,8 @@ const setupControls = (anim) => {
 
     const updateLabel = (f) => { frameInfo.textContent = `${Math.floor(f)} / ${totalFrames}`; };
     updateLabel(0);
-
     anim.addEventListener('enterFrame', (e) => {
+        // во время перемотки мышью не трогаем скраббер из события анимации — иначе они конфликтуют
         if (scrubbing) return;
         scrubber.value = Math.floor(e.currentTime);
         updateLabel(e.currentTime);
@@ -175,7 +214,7 @@ const setupControls = (anim) => {
 
     btnPause.onclick = () => {
         if (playing) { anim.pause(); playing = false; btnPause.innerHTML = '▶'; }
-        else         { anim.play();  playing = true;  btnPause.innerHTML = '⏸&ensp;Пауза'; }
+        else         { anim.play();  playing = true;  btnPause.innerHTML = '⏸'; }
     };
     btnStop.onclick  = () => { anim.stop(); playing = false; scrubber.value = 0; updateLabel(0); btnPause.innerHTML = '▶'; };
     speedSel.onchange = () => { anim.setSpeed(parseFloat(speedSel.value)); };
@@ -201,7 +240,6 @@ const renderStats = (s) => {
 
     let html = '<div class="statsInner">';
 
-    // верхние карточки — только непустые
     html += '<div class="statsGrid">';
     html += `<div class="statBox"><div class="statLabel">Итого</div><div class="statValue">${fmtTime(s.totalTime)}</div></div>`;
     if (s.imageCount > 0)
@@ -210,7 +248,6 @@ const renderStats = (s) => {
         html += `<div class="statBox"><div class="statLabel">Кадры видео</div><div class="statValue">${s.videoTotalFrames}</div><div class="statDetail">${s.videoCount} видео · ${fmt(s.videoTotalSize)}</div></div>`;
     html += '</div>';
 
-    // тайминг-бар — только ненулевые сегменты
     const phaseSum = s.imageDecodeTime + s.videoDecodeTime + (s.lottieInitTime || 0) || 1;
     html += '<div class="statsTableTitle">Время работы</div><div class="timingBar">';
     if (s.imageCount > 0)       html += `<div class="timingSegment images" style="width:${s.imageDecodeTime / phaseSum * 100}%"></div>`;
@@ -224,7 +261,6 @@ const renderStats = (s) => {
 
     html += '<div class="resultBlock">';
 
-    // характеристики анимации
     if (animW > 0) {
         html += `<div class="resultCard" style="border-left-color:#475569">
             <div class="rcHead"><span class="rcTitle">АНИМАЦИЯ</span><span class="rcBadge">${animW}×${animH} · ${animFps} fps</span></div>

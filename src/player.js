@@ -1,6 +1,6 @@
 // WebCodecs VideoDecoder + MP4Box
-const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAccel) => {
-    if (!('VideoDecoder' in window)) {
+const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAccel, {workerSafe = false} = {}) => {
+    if (!('VideoDecoder' in self)) {
         throw new Error('WebCodecs API не поддерживается');
     }
     const arrayBuf = await videoBlob.arrayBuffer();
@@ -69,8 +69,12 @@ const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAcc
                     const canvas = new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
                     canvas.getContext('2d').drawImage(frame, 0, 0);
                     frame.close();
-                    const blob = await canvas.convertToBlob({type: 'image/webp', quality: 0.92});
-                    return URL.createObjectURL(blob);
+                    // WebP 0.8 = дефолт оптимайзера: качество совпадает с исходниками,
+                    // и в ~2.5x быстрее чем 0.92 которое было раньше
+                    const blob = await canvas.convertToBlob({type: 'image/webp', quality: 0.8});
+                    // в воркере возвращаем Blob — он клонируется через postMessage,
+                    // на главном потоке из него создадут blob URL (который не умрёт)
+                    return workerSafe ? blob : URL.createObjectURL(blob);
                 })();
                 framePromises.push(p);
             },
@@ -119,7 +123,7 @@ const extractFramesFallback = (videoBlob, count, fps, onFrame) => {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 canvas.getContext('2d').drawImage(video, 0, 0);
-                frames.push(URL.createObjectURL(await new Promise(r => canvas.toBlob(r, 'image/png'))));
+                frames.push(URL.createObjectURL(await new Promise(r => canvas.toBlob(r, 'image/webp', 0.8))));
 
                 if (onFrame) onFrame(i + 1, count);
             }
@@ -132,12 +136,10 @@ const extractFramesFallback = (videoBlob, count, fps, onFrame) => {
     });
 };
 
-const restoreAnimation = async (json, zipBlob, {onProgress = () => {}} = {}) => {
+const restoreAnimation = async (json, zipBlob, {onProgress = () => {}, workerSafe = false} = {}) => {
     const data = JSON.parse(JSON.stringify(json));
     const assets = data.assets || [];
     const videoAssets = data.videoAssets || [];
-
-    const zip = await JSZip.loadAsync(await zipBlob.arrayBuffer());
 
     const stats = {
         imageCount: 0, imageTotalSize: 0, imageDecodeTime: 0,
@@ -145,22 +147,35 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}} = {}) => 
         videoDetails: [], videoDecodeTime: 0
     };
 
+    const externalImages = assets.filter(a => a.u && a.p && !a._video);
+    const externalVideos = videoAssets.filter(va => va.file);
+
+    // самодостаточный JSON — нет внешних ассетов, ZIP не нужен
+    if (externalImages.length === 0 && externalVideos.length === 0) {
+        onProgress({phase: 'done', percent: 100});
+        return {data, stats};
+    }
+
+    if (!zipBlob) throw new Error('Анимация требует ZIP архив с ассетами');
+
+    const zip = await JSZip.loadAsync(await zipBlob.arrayBuffer());
+
     // извлекаем картинки из ZIP параллельно
     const imgT0 = performance.now();
-    const imageCandidates = assets.filter(a => a.u && a.p && !a._video);
     let imgDone = 0;
 
-    await Promise.all(imageCandidates.map(async (asset) => {
+    await Promise.all(externalImages.map(async (asset) => {
         const zipFile = zip.file(asset.u + asset.p);
         if (!zipFile) return;
         const blob = await zipFile.async('blob');
         stats.imageTotalSize += blob.size;
         asset.u = '';
-        asset.p = URL.createObjectURL(blob);
+        // в воркере — кладём Blob, postMessage клонирует его на главный поток
+        asset.p = workerSafe ? blob : URL.createObjectURL(blob);
         const done = ++imgDone;
         onProgress({
-            phase: 'images', current: done, total: imageCandidates.length,
-            percent: Math.round(done / Math.max(imageCandidates.length, 1) * 30)
+            phase: 'images', current: done, total: externalImages.length,
+            percent: Math.round(done / Math.max(externalImages.length, 1) * 30)
         });
     }));
     stats.imageCount = imgDone;
@@ -168,15 +183,15 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}} = {}) => 
 
     // извлекаем видеокадры из ZIP
     const vidT0 = performance.now();
-    for (let vi = 0; vi < videoAssets.length; vi++) {
-        const va = videoAssets[vi];
+    for (let vi = 0; vi < externalVideos.length; vi++) {
+        const va = externalVideos[vi];
         const zipFile = zip.file(va.file);
         if (!zipFile) continue;
 
         onProgress({
             phase: 'video',
-            message: `Видео ${vi + 1}/${videoAssets.length}: ${va.file}...`,
-            percent: 35 + Math.round(vi / Math.max(videoAssets.length, 1) * 50)
+            message: `Видео ${vi + 1}/${externalVideos.length}: ${va.file}...`,
+            percent: 35 + Math.round(vi / Math.max(externalVideos.length, 1) * 50)
         });
 
         const videoBlob = await zipFile.async('blob');
@@ -195,16 +210,18 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}} = {}) => 
                 onProgress({
                     phase: 'video',
                     message: `Кадр ${cur}/${total}`,
-                    percent: 35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(videoAssets.length, 1) * 50)
+                    percent: 35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(externalVideos.length, 1) * 50)
                 });
-            }, (accel) => { vdStat.hardwareAccel = accel; });
+            }, (accel) => { vdStat.hardwareAccel = accel; }, {workerSafe});
             vdStat.decoderApi = 'WebCodecs';
-        } catch {
+        } catch (e) {
+            // в воркере нет document — video element fallback недоступен
+            if (workerSafe) throw new Error(`WebCodecs не сработал, fallback недоступен в воркере: ${e.message}`);
             frames = await extractFramesFallback(videoBlob, va.frames, va.fps, (cur, total) => {
                 onProgress({
                     phase: 'video',
                     message: `Кадр ${cur}/${total}`,
-                    percent: 35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(videoAssets.length, 1) * 50)
+                    percent: 35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(externalVideos.length, 1) * 50)
                 });
             });
         }
@@ -228,26 +245,31 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}} = {}) => 
 };
 
 // проверяет совместимость JSON и ZIP перед воспроизведением
-// возвращает массив строк-ошибок (пустой — всё ок)
 const validateFilesMatch = async (json, zipBlob) => {
-    if (!json || typeof json !== 'object') return ['Файл не является валидным JSON'];
-    if (!json.v || !json.fr || !json.w || !json.h) return ['Файл не является Lottie анимацией'];
+    if (!json || typeof json !== 'object') return {requiresZip: false, errors: ['Файл не является валидным JSON'], warnings: []};
+    if (!json.v || !json.fr || !json.w || !json.h) return {requiresZip: false, errors: ['Файл не является Lottie анимацией'], warnings: []};
 
     const assets = json.assets || [];
     const videoAssets = json.videoAssets || [];
     const externalImages = assets.filter(a => a.u && a.p && !a._video);
     const externalVideos = videoAssets.filter(va => va.file);
-
-    if (externalImages.length === 0 && externalVideos.length === 0) {
-        return ['JSON не содержит внешних ассетов — этот файл не требует ZIP архива'];
+    const requiresZip = externalImages.length > 0 || externalVideos.length > 0;
+    if (!requiresZip) return {requiresZip: false, errors: [], warnings: []};
+    if (!zipBlob) {
+        const desc = [
+            externalImages.length > 0 && `${externalImages.length} изображений`,
+            externalVideos.length > 0 && `${externalVideos.length} видео`
+        ].filter(Boolean).join(', ');
+        return {requiresZip: true, errors: [`Нужен ZIP архив (${desc})`], warnings: []};
     }
 
     let zip;
     try { zip = await JSZip.loadAsync(await zipBlob.arrayBuffer()); }
-    catch { return ['Не удалось прочитать ZIP архив']; }
+    catch { return {requiresZip: true, errors: ['Не удалось прочитать ZIP архив'], warnings: []}; }
 
     const zipFiles = new Set(Object.keys(zip.files));
     const errors = [];
+    const warnings = [];
 
     const missingImgs = externalImages.filter(a => !zipFiles.has(a.u + a.p));
     if (missingImgs.length > 0) {
@@ -261,7 +283,72 @@ const validateFilesMatch = async (json, zipBlob) => {
         errors.push(`В ZIP нет видео: ${missingVids.map(va => va.file).join(', ')}`);
     }
 
-    return errors;
+    // предупреждение: в ZIP есть файлы, которых нет в JSON — возможно другой архив
+    if (errors.length > 0) {
+        const expectedPaths = new Set([
+            ...externalImages.map(a => a.u + a.p),
+            ...externalVideos.map(va => va.file)
+        ]);
+        const extraCount = Object.values(zip.files).filter(f => !f.dir && !expectedPaths.has(f.name)).length;
+        if (extraCount > 0) warnings.push(`ZIP содержит ${extraCount} лишних файлов — возможно не тот архив`);
+    }
+
+    return {requiresZip: true, errors, warnings};
 };
 
-export {extractFramesWebCodecs, extractFramesFallback, restoreAnimation, validateFilesMatch};
+const Player = {
+    restore: restoreAnimation,
+    validate: validateFilesMatch,
+    _workerUrl: 'https://cdn.jsdelivr.net/gh/taamiioos/lottie-optimizer@main/src/worker.js',
+    async restoreInWorker(json, zipBlob, {onProgress = () => {}} = {}) {
+        // если браузер не поддерживает воркеры — fallback на главный поток
+        if (typeof Worker === 'undefined') {
+            return restoreAnimation(json, zipBlob, {onProgress});
+        }
+        if (!zipBlob) {
+            return restoreAnimation(json, null, {onProgress});
+        }
+        return new Promise(async (resolve, reject) => {
+            let worker;
+            try {
+                worker = new Worker(Player._workerUrl, {type: 'module'});
+            } catch {
+                // не удалось создать воркер — fallback
+                resolve(restoreAnimation(json, zipBlob, {onProgress}));
+                return;
+            }
+            const id = Math.random().toString(36).slice(2);
+            worker.onmessage = ({data: msg}) => {
+                if (msg.id !== id) return;
+                if (msg.type === 'progress') {
+                    onProgress(msg.info);
+                } else if (msg.type === 'restore-result') {
+                    worker.terminate();
+                    const result = msg.result;
+                    for (const asset of (result.data?.assets || [])) {
+                        if (asset.p instanceof Blob) {
+                            asset.p = URL.createObjectURL(asset.p);
+                        }
+                    }
+                    resolve(result);
+                } else if (msg.type === 'error') {
+                    worker.terminate();
+                    reject(new Error(msg.message));
+                }
+            };
+
+            worker.onerror = (e) => {
+                worker.terminate();
+                // fallback на главный поток если воркер не загрузился
+                restoreAnimation(json, zipBlob, {onProgress}).then(resolve).catch(reject);
+            };
+
+            // ZIP передаём как transferable — без копирования
+            const zipBuffer = await zipBlob.arrayBuffer();
+            worker.postMessage({id, type: 'restore', json, zipBuffer}, [zipBuffer]);
+        });
+    }
+};
+
+export {Player, extractFramesWebCodecs, extractFramesFallback, restoreAnimation, validateFilesMatch};
+

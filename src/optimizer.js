@@ -1,11 +1,10 @@
 import {ImageProcessor} from './image.js';
 import {VideoEncoderUtil} from './video.js';
 
-// оптимизатор — главная функция, которая всё сжимает, ищет последовательности, делает видео и пакует в zip
 const Optimizer = {
-    // ищем последовательности кадров по id
+    // последовательности кадров по id
     findSequences(assets) {
-        // берём только картинки с data:image и id
+        // только картинки с data:image и id
         const imageAssets = assets.filter(a => a.p?.startsWith('data:image') && a.id);
         const groups = new Map();
         for (const asset of imageAssets) {
@@ -60,26 +59,116 @@ const Optimizer = {
 
         return sequences;
     },
+    // URL воркера на CDN — пользователю ничего не нужно копировать
+    _workerUrl: 'https://cdn.jsdelivr.net/gh/taamiioos/lottie-optimizer@main/src/worker.js',
+
+    // запуск оптимизации в отдельном воркере — не блокирует основной поток
+    _runInWorker(data, options) {
+        // поддерживает ли браузер вообще Web Workers
+        if (typeof Worker === 'undefined') {
+            // Если нет
+            // просто запускаем ту же функцию Optimizer.run синхронно в текущем потоке
+            const {worker: _w, ...opts} = options;   // убираем опцию worker
+            return Optimizer.run(data, opts);
+        }
+        return new Promise((resolve, reject) => {
+            let worker;
+
+            // пытаемся создать Worker
+            try {
+                // ссылка
+                worker = new Worker(Optimizer._workerUrl, { type: 'module' });
+            } catch (err) {
+                // Если создание Worker провалилось, то fallback в главный поток
+                const {worker: _w, ...opts} = options;
+                resolve(Optimizer.run(data, opts));   // запускаем синхронно
+                return;
+            }
+
+            // генерируем уникальный id для сообщений
+            const id = Math.random().toString(36).slice(2);
+
+            // достаём колбэк onProgress
+            const { onProgress = () => {} } = options;
+
+            // готовим чистые options без worker и onProgress
+            const { onProgress: _p, worker: _w, ...opts } = options;
+
+            // слушаем сообщения ОТ worker в главный поток
+            worker.onmessage = ({ data: msg }) => {
+                // Проверяем, что сообщение именно для нашего запроса
+                if (msg.id !== id) return;
+
+                switch (msg.type) {
+                    case 'progress':
+                        onProgress(msg.info);
+                        break;
+                    case 'result':
+                        worker.terminate();  // закрываем worker, больше не нужен
+
+                        // восстанавливаем Blob из ArrayBuffer (zipBuffer пришёл transferable)
+                        const zip = new Blob([msg.result.zipBuffer], { type: 'application/zip' });
+
+                        // Формируем финальный объект результата
+                        const finalResult = { ...msg.result, zip, zipBuffer: undefined };
+                        if (finalResult.preview?.assets && data.assets?.length) {
+                            const origById = new Map(data.assets.map(a => [a.id, a]));
+                            for (const pa of finalResult.preview.assets) {
+                                if (pa._video && pa.id && !pa.p) {           // это видео-кадр без base64
+                                    const orig = origById.get(pa.id);
+                                    if (orig?.p) pa.p = orig.p;
+                                }
+                            }
+                        }
+                        resolve(finalResult);
+                        break;
+
+                    case 'error':
+                        worker.terminate();
+                        reject(new Error(msg.message));
+                        break;
+                }
+            };
+
+            // ловим критические ошибки создания/выполнения worker'а
+            worker.onerror = (e) => {
+                worker.terminate();
+                reject(new Error('Worker: ' + e.message));
+            };
+
+            // отправляем задачу В worker
+            worker.postMessage({
+                id,
+                type: 'optimize',
+                data,           // исходные данные Lottie (json с assets)
+                options: opts   // очищенные опции (без worker и onProgress)
+            });
+        });
+    },
     // главная функция оптимизации
     async run(data, options = {}) {
         const {
             quality = 0.8,
             convertToVideo = true,
-            videoFps = 24,
+            videoFps = data.fr || 24,
             videoBitrateMultiplier = 1,
-            onProgress = () => {}
+            onProgress = () => {},
+            worker = false
         } = options;
 
+        // если попросили воркер — делегируем всю работу туда
+        if (worker) return this._runInWorker(data, options);
         const totalT0 = performance.now();
-        // делаем глубокие копии, чтобы не портить оригинальные данные
+        // глубокие копии, чтобы не портить оригинальные данные
         // не гоняет данные через строку и обратно
+        // result — будет в ZIP (без blob url), preview — для показа в браузере (с blob url)
         const result = structuredClone(data);
         const preview = { ...data, assets: JSON.parse(JSON.stringify(data.assets || [])) };
         const assets = result.assets || [];
         const previewAssets = preview.assets || [];
         const zip = new JSZip();
         const hashMap = new Map(); // для поиска дубликатов по sha-256
-        const blobUrls = []; // чтобы потом можно было отозвать
+        const blobUrls = [];
 
         // вся статистика сюда
         const stats = {
@@ -104,6 +193,7 @@ const Optimizer = {
             webpConversions: 0,
             keptOriginal: 0,
             webpSavings: 0,
+            singleImagesSizeBefore: 0,
             videoDetails: [],
             imageDetails: [],
             originalJsonSize: 0,
@@ -114,27 +204,36 @@ const Optimizer = {
             phaseTiming: {},
             videoSkipped: 0
         };
-
-        // предзагружаем все блобы параллельно — одно декодирование base64 на всё
-        // ОПТИМИЗАЦИЯ: раньше каждая функция декодировала base64 сама.
-        // Теперь один параллельный проход в начале — дальше все работают с готовыми Blob из кэша.
+        const sequences = this.findSequences(assets);
+        const videoAssets = [];
+        const videoFrameIds = new Set();
+        const videoFrameSeqIndex = new Map();
+        const candidateVideoIds = new Set(sequences.flatMap(s => s.ids));
         const analysisT0 = performance.now();
         onProgress({ phase: 'analysis', message: 'Загрузка ассетов...', percent: 2 });
+        const blobCache = new Map();
+        for (const a of assets.filter(a => a.p?.startsWith('data:image') && a.id)) {
+            if (candidateVideoIds.has(a.id)) continue;
+            const blob = ImageProcessor.decodeBase64(a.p);
+            if (blob) blobCache.set(a.id, blob);
+        }
 
-        const blobCache = new Map(); // asset.id → Blob
-        await Promise.all(
-            assets
-                .filter(a => a.p?.startsWith('data:image') && a.id)
-                .map(async a => {
-                    const blob = await ImageProcessor.decodeBase64(a.p);
-                    if (blob) blobCache.set(a.id, blob);
-                })
-        );
-
-        // анализ — считаем статистику из уже загруженных блобов
+        // анализ
         await Promise.all(assets.map(async asset => {
             if (!asset.p?.startsWith('data:image')) return;
             stats.totalImages++;
+            if (candidateVideoIds.has(asset.id)) {
+                const comma = asset.p.indexOf(',');
+                const b64len = comma >= 0 ? asset.p.length - comma - 1 : 0;
+                const sz = Math.floor(b64len * 0.75);
+                stats.sizeBefore += sz;
+                if (sz > stats.largestImage) stats.largestImage = sz;
+                if (sz < stats.smallestImage) stats.smallestImage = sz;
+                const mime = comma > 0 ? asset.p.slice(5, comma).split(';')[0] : '';
+                const fmt = {'image/webp': 'webp', 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif'}[mime] || 'png';
+                stats.formats[fmt] = (stats.formats[fmt] || 0) + 1;
+                return;
+            }
             const blob = blobCache.get(asset.id);
             if (!blob) return;
             const sz = blob.size;
@@ -158,12 +257,6 @@ const Optimizer = {
             percent: 5
         });
 
-        // ищем последовательности кадров для кодирования в видео
-        const sequences = this.findSequences(assets);
-        const videoAssets = [];
-        const videoFrameIds = new Set();
-        const videoFrameSeqIndex = new Map();
-
         if (sequences.length > 0) {
             onProgress({
                 phase: 'sequences',
@@ -175,6 +268,7 @@ const Optimizer = {
         // кодируем найденные последовательности в mp4
         const videoT0 = performance.now();
         let videoCounter = 0;
+        const assetById = new Map(assets.map(a => [a.id, a]));
         if (convertToVideo && sequences.length > 0) {
             for (let si = 0; si < sequences.length; si++) {
                 const seq = sequences[si];
@@ -187,11 +281,12 @@ const Optimizer = {
                 let originalSize = 0;
 
                 for (const id of seq.ids) {
-                    const blob = blobCache.get(id);
-                    if (!blob) continue;
-
-                    originalSize += blob.size;
-                    frames.push(blob);
+                    const asset = assetById.get(id);
+                    if (!asset?.p?.startsWith('data:image')) continue;
+                    const comma = asset.p.indexOf(',');
+                    const b64len = comma >= 0 ? asset.p.length - comma - 1 : 0;
+                    originalSize += Math.floor(b64len * 0.75);
+                    frames.push(asset.p);
                 }
                 if (frames.length < 3) continue;
 
@@ -276,6 +371,7 @@ const Optimizer = {
                 asset.p = '';
                 asset.u = '';
                 asset._video = `video_${videoFrameSeqIndex.get(asset.id)}`;
+                previewAssets[i]._video = `video_${videoFrameSeqIndex.get(asset.id)}`;
                 continue;
             }
             candidates.push({asset, previewAsset: previewAssets[i]});
@@ -295,6 +391,7 @@ const Optimizer = {
             const blob = blobCache.get(asset.id);
             if (!blob) return;
             const origSize = blob.size;
+            stats.singleImagesSizeBefore += origSize;
             const bytes = new Uint8Array(await blob.arrayBuffer());
 
             const hash = await ImageProcessor.hash(bytes);
@@ -309,6 +406,7 @@ const Optimizer = {
                 stats.duplicates++;
                 return;
             }
+            // та же картинка уже обрабатывается другим параллельным воркером — ждём его результата
             if (processingMap.has(hash)) {
                 const ref = await processingMap.get(hash);
                 asset.u = 'assets/';
@@ -323,7 +421,7 @@ const Optimizer = {
 
             // уникальное изображение — стартуем конвертацию и сразу регистрируем промис
             const promise = (async () => {
-                const processed = await ImageProcessor.process(blob, quality);
+                const processed = await ImageProcessor.process(blob, quality, bytes);
                 const outBlob = processed.blob;
                 const outFormat = processed.format;
                 const ext = ImageProcessor.extFromFormat(outFormat);
@@ -363,13 +461,11 @@ const Optimizer = {
             previewAsset.p = ref.url;
             previewAsset.e = 0;
         }
-
-        // ОПТИМИЗАЦИЯ: параллельная обработка изображений через пул из 4 воркеров.
-        // Раньше был последовательный цикл — каждый await блокировал следующий.
-        // Теперь 4 картинки конвертируются одновременно, остальные ждут в очереди.
-        const CONCURRENCY = 4;
+        // 8 параллельных обработчиков — баланс между скоростью и памятью
+        const CONCURRENCY = 8;
         const queue = [...candidates];
 
+        // каждый воркер берёт задачи из общей очереди пока она не пуста
         const imgWorker = async () => {
             while (queue.length > 0) await processOne(queue.shift())
         };
@@ -408,9 +504,10 @@ const Optimizer = {
 
         stats.zipTime = performance.now() - zipT0;
         stats.phaseTiming.zip = stats.zipTime;
-
-        stats.originalJsonSize = new Blob([JSON.stringify(data)]).size;
-        stats.optimizedJsonSize = new Blob([JSON.stringify(result)]).size;
+        let _origB64Len = 0;
+        for (const a of data.assets || []) if (a.p?.startsWith('data:')) _origB64Len += a.p.length;
+        stats.originalJsonSize = _origB64Len + 50000; // +50KB JSON-структура без изображений
+        stats.optimizedJsonSize = new Blob([JSON.stringify(result)]).size; // result без base64 — быстро
         stats.zipFileSize = zipBlob.size;
 
         stats.totalSaved = stats.originalJsonSize - (stats.optimizedJsonSize + stats.zipFileSize);
