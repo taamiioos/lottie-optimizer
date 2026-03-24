@@ -1,5 +1,8 @@
 import {Optimizer} from '../src/index.js';
 
+const formatSize = (b) => { if (!b) return '0 B'; const k = 1024, s = ['B','KB','MB','GB']; const i = Math.floor(Math.log(b)/Math.log(k)); return parseFloat((b/Math.pow(k,i)).toFixed(2))+' '+s[i]; };
+
+// короткая функция вместо document.getElementById
 const $ = id => document.getElementById(id);
 // отдаёт управление браузеру между тяжёлыми операциями — страница не замерзает при разборе большого json
 const yieldToMain = () => new Promise(r => setTimeout(r, 0));
@@ -400,6 +403,7 @@ async function loadAllDemos() {
 const uploadArea = $('uploadArea');
 const fileInput = $('fileInput');
 let userResult = null;
+// guard — блокирует повторный запуск пока идёт обработка файла
 let _fileHandling = false;
 uploadArea.onclick = () => fileInput.click();
 uploadArea.ondragover = (e) => {
