@@ -4,7 +4,7 @@ self.JSZip = JSZip;
 import {Optimizer} from './optimizer.js';
 import {restoreAnimation} from './player.js';
 
-// нужен и для кодирования (optimize) и для декодирования (restore)
+// нужен и для кодирования и для декодирования
 let _mp4boxLoaded = false;
 const loadMp4Box = async () => {
     if (_mp4boxLoaded) return;

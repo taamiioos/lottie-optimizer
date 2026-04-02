@@ -11,7 +11,7 @@ const fmt = (bytes) => {
 const fmtTime = (ms) => ms < 1000 ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixed(2) + ' s';
 
 // глобальное состояние плеера: загруженные файлы и текущая анимация
-const state = {json: null, zipBlob: null, anim: null};
+const state = {json: null, zipBlob: null, lottieBlob: null, anim: null};
 
 // зоны перетаскивания файлов
 const markZoneLoaded = (zoneId, hintId, sizeId, filename, size) => {
@@ -31,42 +31,36 @@ const setupZone = (zoneId, inputId, onFile) => {
 };
 
 setupZone('zoneJson', 'jsonInput', async (file) => {
-    try { state.json = JSON.parse(await file.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', file.name, file.size); }
-    catch { showCompatStatus('error', 'Not a valid JSON file'); return; }
+    if (file.name.endsWith('.lottie')) {
+        state.lottieBlob = file; state.json = null; state.zipBlob = null;
+        markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', file.name, file.size);
+    } else {
+        try { state.json = JSON.parse(await file.text()); state.lottieBlob = null; markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', file.name, file.size); }
+        catch { showCompatStatus('error', 'Not a valid JSON file'); return; }
+    }
     checkReady();
     checkCompatibility();
 });
 
-setupZone('zoneZip', 'zipInput', (file) => {
-    state.zipBlob = file;
-    markZoneLoaded('zoneZip', 'zipHint', 'zipSize', file.name, file.size);
-    checkReady();
-    checkCompatibility();
-});
 
 $('jsonInput').onchange = async (e) => {
     const f = e.target.files[0];
     if (f) {
-        try { state.json = JSON.parse(await f.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', f.name, f.size); }
-        catch { showCompatStatus('error', 'Not a valid JSON file'); e.target.value = ''; return; }
-        checkReady();
-        checkCompatibility();
-    }
-    e.target.value = '';
-};
-$('zipInput').onchange = (e) => {
-    const f = e.target.files[0];
-    if (f) {
-        state.zipBlob = f;
-        markZoneLoaded('zoneZip', 'zipHint', 'zipSize', f.name, f.size);
+        if (f.name.endsWith('.lottie')) {
+            state.lottieBlob = f; state.json = null; state.zipBlob = null;
+            markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', f.name, f.size);
+        } else {
+            try { state.json = JSON.parse(await f.text()); state.lottieBlob = null; markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', f.name, f.size); }
+            catch { showCompatStatus('error', 'Not a valid JSON file'); e.target.value = ''; return; }
+        }
         checkReady();
         checkCompatibility();
     }
     e.target.value = '';
 };
 
-// кнопка активна как только загружен JSON
-const checkReady = () => { $('btnPlay').disabled = !state.json; };
+// кнопка активна как только загружен JSON или .lottie
+const checkReady = () => { $('btnPlay').disabled = !state.json && !state.lottieBlob; };
 
 // статус совместимости файлов
 const showCompatStatus = (type, message) => {
@@ -76,26 +70,38 @@ const showCompatStatus = (type, message) => {
     el.textContent = `${icon} ${message}`;
 };
 
-const checkCompatibility = async () => {
-    if (!state.json) { $('compatStatus').className = 'pl-compat-status'; $('compatStatus').textContent = ''; return; }
-    const result = await Player.validate(state.json, state.zipBlob);
-    if (result.errors.length > 0) {
-        // нужен ZIP, но ещё не загружен — это не ошибка совместимости, а подсказка
-        if (result.requiresZip && !state.zipBlob) {
-            showCompatStatus('warn', 'ZIP archive required');
+const checkCompatibility = () => {
+    const el = $('compatStatus');
+    if (!state.json && !state.lottieBlob) {
+        el.className = 'pl-compat-status';
+        el.textContent = '';
+        return;
+    }
+
+    // если загружен Lottie-файл — считаем, что совместимость ок
+    if (state.lottieBlob) {
+        el.className = 'pl-compat-status pl-compat-ok';
+        el.textContent = '✓ File ready';
+        return;
+    }
+
+    // если JSON — предупреждаем, если ZIP не загружен
+    if (state.json) {
+        if (!state.zipBlob) {
+            el.className = 'pl-compat-status pl-compat-warn';
+            el.textContent = '⚠ ZIP archive recommended';
         } else {
-            showCompatStatus('error', 'Files are incompatible');
+            el.className = 'pl-compat-status pl-compat-ok';
+            el.textContent = '✓ Files ready';
         }
-    } else {
-        showCompatStatus('ok', result.requiresZip ? 'Files are compatible' : 'File ready');
     }
 };
 
 // сброс
 const resetPlayer = () => {
-    state.anim?.destroy(); state.anim = null; state.json = null; state.zipBlob = null;
+    state.anim?.destroy(); state.anim = null; state.json = null; state.zipBlob = null; state.lottieBlob = null;
     ['zoneJson', 'zoneZip'].forEach(id => $(id).classList.remove('loaded', 'drag'));
-    $('jsonHint').className = 'pl-zone-hint'; $('jsonHint').textContent = 'optimized.json';
+    $('jsonHint').className = 'pl-zone-hint'; $('jsonHint').textContent = 'animation.json / .lottie';
     $('zipHint').className  = 'pl-zone-hint'; $('zipHint').textContent  = 'assets.zip';
     $('jsonSize').style.display = 'none';
     $('zipSize').style.display  = 'none';
@@ -130,17 +136,8 @@ $('btnPlay').onclick = async () => {
     const totalT0 = performance.now();
 
     try {
-        const compat = await Player.validate(state.json, state.zipBlob);
-        if (compat.errors.length > 0) {
-            showCompatStatus('error', compat.errors[0]);
-            $('progressFill').classList.add('error');
-            setProgress(100, compat.errors[0]);
-            $('btnPlay').disabled = false;
-            $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Play</span>';
-            return;
-        }
 
-        const {data, stats} = await Player.restoreInWorker(state.json, state.zipBlob || null, {
+        const {data, stats} = await Player.restoreInWorker(state.lottieBlob || state.json, state.lottieBlob ? null : state.zipBlob, {
             onProgress: (info) => {
                 if (info.phase === 'images') {
                     setProgress(5 + Math.round(info.percent * 0.85), `Image ${info.current}/${info.total}`);
@@ -256,7 +253,7 @@ const renderStats = (s) => {
     html += '</div><div class="timingLegend">';
     if (s.imageCount > 0)       html += `<span class="tImages">Images&nbsp;${fmtTime(s.imageDecodeTime)}</span>`;
     if (s.videoTotalFrames > 0) html += `<span class="tVideo">Video&nbsp;${fmtTime(s.videoDecodeTime)}</span>`;
-    html += `<span class="tZip">Init&nbsp;${fmtTime(s.lottieInitTime || 0)}</span></div>`;
+    html += `<span class="tZip">Lottie init&nbsp;${fmtTime(s.lottieInitTime || 0)}</span></div>`;
     const decodeFps = s.videoTotalFrames > 0 && s.videoDecodeTime > 0
         ? (s.videoTotalFrames / (s.videoDecodeTime / 1000)).toFixed(1)
         : null;

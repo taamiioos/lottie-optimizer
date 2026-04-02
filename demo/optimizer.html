@@ -157,11 +157,11 @@
     </section>
     <section class="userSection" id="userSection">
         <div class="uploadArea" id="uploadArea">
-            <input type="file" id="fileInput" accept=".json" hidden>
+            <input type="file" id="fileInput" accept=".json,.lottie" hidden>
             <div class="uploadIcon">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
             </div>
-            <div class="uploadText">Drop .json here or click to upload</div>
+            <div class="uploadText">Drop .json or .lottie here or click to upload</div>
         </div>
 
         <div class="userSlot" id="userSlot" style="display:none">
@@ -209,13 +209,9 @@
             </div>
             <div class="demoStats" id="user-stats"></div>
             <div class="userDownloads" id="userDownloads" style="display:none">
-                <button class="dlBtn" id="dlJson">
+                <button class="dlBtn dlBtn--zip" id="dlLottie">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download JSON
-                </button>
-                <button class="dlBtn dlBtn--zip" id="dlZip">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-                    Download ZIP
+                    Download .lottie
                 </button>
             </div>
         </div>

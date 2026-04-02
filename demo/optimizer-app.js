@@ -31,9 +31,8 @@ const fmtTime = (ms) => (ms < 1000) ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixe
 
 // рендерим всю статистику в блоке
 const renderStats = (container, stats, originalFileSize, animData) => {
-    const jsonAfter = stats.optimizedJsonSize;
-    const zipSize = stats.zipFileSize;
-    const totalAfter = jsonAfter + zipSize;
+    const lottieSize = stats.zipFileSize;
+    const totalAfter = lottieSize;
     const saved = originalFileSize - totalAfter;
     const savedPct = originalFileSize > 0 ? (saved / originalFileSize * 100).toFixed(2) : '0.00';
     const cls = saved > 0 ? 'positive' : saved < 0 ? 'negative' : '';
@@ -63,7 +62,7 @@ const renderStats = (container, stats, originalFileSize, animData) => {
             <div class="statBox">
                 <div class="statLabel">After</div>
                 <div class="statValue">${formatSize(totalAfter)}</div>
-                <div class="statDetail">JSON ${formatSize(jsonAfter)} + ZIP ${formatSize(zipSize)}</div>
+                <div class="statDetail">.lottie ${formatSize(lottieSize)}</div>
             </div>
             <div class="statBox ${cls}">
                 <div class="statLabel">Saved</div>
@@ -87,7 +86,7 @@ const renderStats = (container, stats, originalFileSize, animData) => {
     html += `<span class="tAnalysis">Analysis&nbsp;${fmtTime(pt.analysis || 0)}</span>`;
     html += `<span class="tVideo">Video&nbsp;${fmtTime(pt.videoEncoding || 0)}</span>`;
     if (showImgTiming) html += `<span class="tImages">Images&nbsp;${fmtTime(pt.imageProcessing || 0)}</span>`;
-    html += `<span class="tZip">ZIP&nbsp;${fmtTime(pt.zip || 0)}</span>`;
+    html += `<span class="tZip">.lottie&nbsp;${fmtTime(pt.zip || 0)}</span>`;
     html += '</div>';
     html += '<table class="statsTable">';
     if (animData && animData.fr > 0) {
@@ -255,7 +254,6 @@ const renderStats = (container, stats, originalFileSize, animData) => {
     container.innerHTML = html;
 }
 
-// хранит readSettings и ссылку на animBefore для каждого слота (демки и пользовательского)
 // нужен чтобы не создавать панель настроек заново при ре-оптимизации
 const slotSettingsMap = {};
 
@@ -415,7 +413,7 @@ uploadArea.ondrop = (e) => {
     e.stopPropagation();
     uploadArea.classList.remove('dragover');
     const file = e.dataTransfer.files[0];
-    if (file && file.name.endsWith('.json')) handleUserFile(file);
+    if (file && (file.name.endsWith('.json') || file.name.endsWith('.lottie'))) handleUserFile(file);
 };
 fileInput.onchange = (e) => {
     const file = e.target.files[0];
@@ -478,9 +476,15 @@ const handleUserFile = async (file) => {
     $('user-name').textContent = file.name;
 
     try {
-        const text = await file.text();
-        await yieldToMain();
-        const data = JSON.parse(text);
+        let data;
+        if (file.name.endsWith('.lottie')) {
+            const parsed = await Optimizer.parseLottieInput(file);
+            data = parsed.data;
+        } else {
+            const text = await file.text();
+            await yieldToMain();
+            data = JSON.parse(text);
+        }
         userCache = {data, fileSize: file.size, name: file.name};
         await yieldToMain();
 
@@ -533,13 +537,9 @@ const resetUserSlot = () => {
 };
 $('resetUserBtn').onclick = resetUserSlot;
 
-// кнопки скачивания
-$('dlJson').onclick = () => {
-    if (!userResult) return;
-    download(new Blob([JSON.stringify(userResult.json, null, 2)]), 'optimized.json');
-};
-$('dlZip').onclick = () => {
-    if (userResult?.zip) download(userResult.zip, 'assets.zip');
+// кнопка скачивания .lottie
+$('dlLottie').onclick = () => {
+    if (userResult?.lottie) download(userResult.lottie, (userResult.animId || 'optimized') + '.lottie');
 };
 
 const download = (blob, name) => {

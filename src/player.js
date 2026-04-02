@@ -1,7 +1,49 @@
+// проверяет, является ли значение бинарным
+const _isBinary = (x) => x instanceof Blob || x instanceof ArrayBuffer || ArrayBuffer.isView(x);
+
+// функция извлекает json анимации из .lottie файла
+const _parseLottieBlob = async (input) => {
+    const raw = input instanceof Blob ? input : new Blob([input]);
+    // читаем Blob как ArrayBuffer и передаем в JSZip для распаковки архива
+    const zip = await JSZip.loadAsync(await raw.arrayBuffer());
+    // пытаемся найти файл manifest.json
+    const manifestFile = zip.file('manifest.json');
+    // читаем его как строку и парсим JSON
+    const manifest = manifestFile ? JSON.parse(await manifestFile.async('string')) : null;
+    // из manifest берём id первой анимации
+    const animId = manifest?.animations?.[0]?.id || 'animation';
+    // ищем JSON анимации внутри папки animations/
+    const animFile = zip.file(`animations/${animId}.json`);
+    // если JSON не найден — это некорректный .lottie файл
+    if (!animFile) throw new Error(`.lottie: не найден animations/${animId}.json`);
+    // читаем файл анимации как строку и парсим JSON
+    const json = JSON.parse(await animFile.async('string'));
+    // получаем список ассетов
+    const assets = json.assets || [];
+    // проходим по всем ассетам
+    for (const asset of assets) {
+        // если у ассета есть поле p
+        if (asset.p) {
+            // формируем путь к файлу внутри архива
+            const path = (asset.u || '') + asset.p;
+            // пытаемся найти файл по нескольким возможным путям
+            const file =
+                zip.file(path) ||
+                zip.file(`images/${asset.p}`) ||
+                zip.file(`assets/${asset.p}`);
+            if (file) {
+                const blob = await file.async('blob');
+                asset.u = '';
+                // создаём временный URL для Blob, чтобы Lottie renderer мог загрузить изображение напрямую
+                asset.p = URL.createObjectURL(blob);
+            }
+        }
+    }
+    return {json, zipBlob: raw};
+};
+
 // Функция для извлечения кадров из видео через WebCodecs + MP4Box
 const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAccel, {workerSafe = false} = {}) => {
-
-    // Проверяем, поддерживается ли WebCodecs в браузере
     if (!('VideoDecoder' in self)) {
         throw new Error('WebCodecs API not supported');
     }
@@ -18,21 +60,21 @@ const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAcc
         mp4file.onReady = (mp4info) => {
             const track = mp4info.videoTracks[0]; // берём первый видеотрек
             if (!track) return reject(new Error('No video track in file'));
-            info = track; // сохраняем информацию о треке
+            info = track;   // сохраняем информацию о треке
             const trak = mp4file.getTrackById(track.id); // получаем доступ к полной структуре трека
 
             // Ищем H.264 codec description
             for (const entry of trak.mdia.minf.stbl.stsd.entries) {
                 if (entry.avcC) {
                     const s = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
-                    entry.avcC.write(s); // записываем данные в поток
-                    desc = new Uint8Array(s.buffer, 8); // отрезаем первые 8 байт – получаем описание кодека
+                    entry.avcC.write(s);
+                    desc = new Uint8Array(s.buffer, 8); //  получаем описание кодека
                     break;
                 }
             }
             // Настраиваем MP4Box на извлечение всех семплов
             mp4file.setExtractionOptions(track.id, null, {nbSamples: Infinity});
-            mp4file.start(); // начинаем извлечение
+            mp4file.start();
         };
         // Событие, когда MP4Box получил новые семплы
         mp4file.onSamples = (id, user, samples) => {
@@ -45,9 +87,9 @@ const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAcc
         mp4file.onError = (e) => reject(new Error('MP4Box: ' + e));
         // Передаём видео в MP4Box для обработки
         const buf = arrayBuf;
-        buf.fileStart = 0; // обязательно указываем стартовый оффсет
-        mp4file.appendBuffer(buf); // добавляем буфер
-        mp4file.flush(); // сообщаем MP4Box, что данные закончились
+        buf.fileStart = 0;
+        mp4file.appendBuffer(buf);
+        mp4file.flush();
     });
 
     // Проверяем, есть ли поддержка аппаратного ускорения
@@ -60,7 +102,8 @@ const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAcc
             hardwareAcceleration: 'prefer-hardware'
         });
         if (support.supported) hwAccel = 'prefer-hardware';
-    } catch {}
+    } catch {
+    }
     if (onAccel) onAccel(hwAccel === 'prefer-hardware' ? 'GPU' : 'CPU');
 
     // Настройка пула воркеров
@@ -139,7 +182,10 @@ const extractFramesWebCodecs = async (videoBlob, frameCount, fps, onFrame, onAcc
             }));
         }
         // Ждём, пока все кадры декодируются
-        decoder.flush().then(() => { decoder.close(); resolve(); }).catch(reject);
+        decoder.flush().then(() => {
+            decoder.close();
+            resolve();
+        }).catch(reject);
     });
 
     // Ждём, пока все воркеры конвертируют кадры в Blob
@@ -163,7 +209,9 @@ const extractFramesFallback = (videoBlob, count, fps, onFrame) => {
             const step = 1 / fps;
             for (let i = 0; i < count; i++) {
                 video.currentTime = Math.min(i * step, video.duration - 0.001);
-                await new Promise(r => { video.onseeked = r; });
+                await new Promise(r => {
+                    video.onseeked = r;
+                });
 
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
@@ -181,10 +229,26 @@ const extractFramesFallback = (videoBlob, count, fps, onFrame) => {
     });
 };
 
-// Функция восстановления анимации из JSON + ZIP с ассетами
-const restoreAnimation = async (json, zipBlob, {onProgress = () => {}, workerSafe = false} = {}) => {
+// Функция восстановления анимации
+const restoreAnimation = async (input, second, third) => {
+    let json, zipBlob, options;
+    if (_isBinary(input)) {
+        const parsed = await _parseLottieBlob(input);
+        json = parsed.json;
+        zipBlob = parsed.zipBlob;
+        options = (second && !_isBinary(second) && typeof second === 'object') ? second : (third || {});
+    } else {
+        json = input;
+        zipBlob = _isBinary(second) ? second : null;
+        options = (!_isBinary(second) && second && typeof second === 'object') ? second : (third || {});
+    }
+    const {
+        onProgress = () => {
+        }, workerSafe = false
+    } = options;
+
     // Копируем JSON, чтобы не менять оригинал
-    const data = JSON.parse(JSON.stringify(json));
+    const data = structuredClone(json);
     const assets = data.assets || [];
     const videoAssets = data.videoAssets || [];
 
@@ -216,7 +280,7 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}, workerSaf
 
     await Promise.all(externalImages.map(async (asset) => {
         const zipFile = zip.file(asset.u + asset.p); // ищем файл в ZIP
-        if (!zipFile) return;                        // если нет – пропускаем
+        if (!zipFile) return;
 
         const blob = await zipFile.async('blob');    // читаем как Blob
         stats.imageTotalSize += blob.size;           // учитываем размер
@@ -269,7 +333,9 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}, workerSaf
                     message: `Кадр ${cur}/${total}`,
                     percent: 35 + Math.round((vi + cur / Math.max(total, 1)) / Math.max(externalVideos.length, 1) * 50)
                 });
-            }, (accel) => { vdStat.hardwareAccel = accel; }, {workerSafe});
+            }, (accel) => {
+                vdStat.hardwareAccel = accel;
+            }, {workerSafe});
             vdStat.decoderApi = 'WebCodecs';
         } catch (e) {
             // Если WebCodecs не доступен - fallback
@@ -288,7 +354,10 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}, workerSaf
         // Привязываем извлеченные кадры к ассетам JSON
         va.frameIds.forEach((id, i) => {
             const asset = assets.find(a => a.id === id);
-            if (asset && frames[i]) { asset.u = ''; asset.p = frames[i]; }
+            if (asset && frames[i]) {
+                asset.u = '';
+                asset.p = frames[i];
+            }
         });
 
         stats.videoCount++;
@@ -302,86 +371,31 @@ const restoreAnimation = async (json, zipBlob, {onProgress = () => {}, workerSaf
     return {data, stats};
 };
 
-// Проверяет, совпадают ли данные JSON анимации и ZIP с ассетами
-const validateFilesMatch = async (json, zipBlob) => {
-    // Если json не передан или это не объект
-    if (!json || typeof json !== 'object')
-        return {requiresZip: false, errors: ['Not a valid JSON file'], warnings: []};
-
-    // Проверяем минимальные свойства Lottie-анимации: версия, fps, ширина, высота
-    if (!json.v || !json.fr || !json.w || !json.h)
-        return {requiresZip: false, errors: ['Not a valid Lottie animation'], warnings: []};
-
-    // Собираем ассеты из JSON
-    const assets = json.assets || [];
-    const videoAssets = json.videoAssets || [];
-
-    // Находим внешние картинки
-    const externalImages = assets.filter(a => a.u && a.p && !a._video);
-    // Находим видеоассеты
-    const externalVideos = videoAssets.filter(va => va.file);
-    // Нужно ли для анимации ZIP? Да, если есть внешние картинки или видео
-    const requiresZip = externalImages.length > 0 || externalVideos.length > 0;
-    if (!requiresZip)
-        return {requiresZip: false, errors: [], warnings: []}; // ZIP не требуется
-    // ZIP обязателен, но его нет — ошибка
-    if (!zipBlob) {
-        const desc = [
-            externalImages.length > 0 && `${externalImages.length} images`,
-            externalVideos.length > 0 && `${externalVideos.length} videos`
-        ].filter(Boolean).join(', ');
-        return {requiresZip: true, errors: [`ZIP archive required (${desc})`], warnings: []};
-    }
-    // Пробуем открыть ZIP
-    let zip;
-    try {
-        zip = await JSZip.loadAsync(await zipBlob.arrayBuffer());
-    }
-    catch {
-        return {requiresZip: true, errors: ['Failed to read ZIP archive'], warnings: []};
-    }
-    // Получаем все файлы в ZIP
-    const zipFiles = new Set(Object.keys(zip.files));
-    const errors = [];
-    const warnings = [];
-    // Проверяем, какие картинки отсутствуют в ZIP
-    const missingImgs = externalImages.filter(a => !zipFiles.has(a.u + a.p));
-    if (missingImgs.length > 0) {
-        // Показываем первые 3 файла и указываем сколько ещё пропущено
-        const sample = missingImgs.slice(0, 3).map(a => a.u + a.p).join(', ');
-        const extra  = missingImgs.length > 3 ? ` и ещё ${missingImgs.length - 3}` : '';
-        errors.push(`Files missing from ZIP: ${sample}${extra}`);
-    }
-    // Проверяем, какие видео отсутствуют в ZIP
-    const missingVids = externalVideos.filter(va => !zipFiles.has(va.file));
-    if (missingVids.length > 0) {
-        errors.push(`Videos missing from ZIP: ${missingVids.map(va => va.file).join(', ')}`);
-    }
-    // Предупреждение: в ZIP есть файлы, которых нет в JSON
-    if (errors.length > 0) {
-        const expectedPaths = new Set([
-            ...externalImages.map(a => a.u + a.p),
-            ...externalVideos.map(va => va.file)
-        ]);
-        const extraCount = Object.values(zip.files)
-            .filter(f => !f.dir && !expectedPaths.has(f.name))
-            .length;
-        if (extraCount > 0)
-            warnings.push(`ZIP contains ${extraCount} unexpected files — possibly wrong archive`);
-    }
-    return {requiresZip: true, errors, warnings};
-};
-
 // Основной объект Player для работы с Lottie-анимацией
 const Player = {
     // Восстановление анимации (с извлечением изображений и видео)
     restore: restoreAnimation,
     // Проверка соответствия JSON и ZIP
-    validate: validateFilesMatch,
-    // URL скрипта воркера для фоновой обработки анимации
     _workerUrl: 'https://cdn.jsdelivr.net/gh/taamiioos/lottie-optimizer@main/src/worker.js',
     // Метод восстановления анимации в воркере
-    async restoreInWorker(json, zipBlob, {onProgress = () => {}} = {}) {
+    async restoreInWorker(input, second, third) {
+        // нормализуем аргументы
+        let json, zipBlob, options;
+        if (_isBinary(input)) {
+            const parsed = await _parseLottieBlob(input);
+            json = parsed.json;
+            zipBlob = parsed.zipBlob;
+            options = (second && !_isBinary(second) && typeof second === 'object') ? second : (third || {});
+        } else {
+            json = input;
+            zipBlob = _isBinary(second) ? second : null;
+            options = (!_isBinary(second) && second && typeof second === 'object') ? second : (third || {});
+        }
+        const {
+            onProgress = () => {
+            }
+        } = options;
+
         // Если воркеры не поддерживаются — fallback на главный поток
         if (typeof Worker === 'undefined') {
             return restoreAnimation(json, zipBlob, {onProgress});
@@ -394,41 +408,32 @@ const Player = {
         return new Promise(async (resolve, reject) => {
             let worker;
             try {
-                // Создаём новый воркер по URL, используем модульный формат
                 worker = new Worker(Player._workerUrl, {type: 'module'});
             } catch {
-                // Не удалось создать воркер — fallback на главный поток
                 resolve(restoreAnimation(json, zipBlob, {onProgress}));
                 return;
             }
-            // Генерируем уникальный ID для текущей задачи воркера
             const id = Math.random().toString(36).slice(2);
-            // Слушаем сообщения от воркера
             worker.onmessage = ({data: msg}) => {
                 if (msg.id !== id) return;
-                // Сообщения прогресса
                 if (msg.type === 'progress') {
                     onProgress(msg.info);
-                    // Сообщение с результатом восстановления
                 } else if (msg.type === 'restore-result') {
-                    worker.terminate(); // завершение воркера
+                    worker.terminate();
                     const result = msg.result;
                     for (const asset of (result.data?.assets || [])) {
                         if (asset.p instanceof Blob) {
                             asset.p = URL.createObjectURL(asset.p);
                         }
                     }
-                    // Возвращаем результат
                     resolve(result);
                 } else if (msg.type === 'error') {
                     worker.terminate();
                     reject(new Error(msg.message));
                 }
             };
-            // Обработчик ошибок воркера
             worker.onerror = (e) => {
                 worker.terminate();
-                // fallback на главный поток если воркер не загрузился или упал
                 restoreAnimation(json, zipBlob, {onProgress}).then(resolve).catch(reject);
             };
             // Передаём ZIP в воркер как transferable объект, чтобы не копировать память
@@ -438,5 +443,5 @@ const Player = {
     }
 };
 
-export {Player, extractFramesWebCodecs, extractFramesFallback, restoreAnimation, validateFilesMatch};
+export {Player, extractFramesWebCodecs, extractFramesFallback, restoreAnimation};
 

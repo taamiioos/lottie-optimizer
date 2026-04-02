@@ -1,55 +1,248 @@
 import {ImageProcessor} from './image.js';
 import {VideoEncoderUtil} from './video.js';
 
+// base64 из Uint8Array
+function _uint8ToBase64(bytes) {
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+}
+
 const Optimizer = {
+    minifyLottieJson(json, options = {}) {
+        const {
+            precision = 3,
+            removeDefaultValues = true,
+            removeRedundantKeyframes: shouldRemoveRedundant = true,
+        } = options;
+
+        const defaultsToRemove = new Set([
+            'ddd', 'hd', 'ao', 'sr', 'st', 'bm', 'ind',
+            'ip', 'op', 'nm', 'mn', 'cl', 'ln', 'ct', 'ty',
+            'ef', 'ef', 'hasMask', 'maskProperties'
+        ]);
+
+        function roundNumber(num) {
+            if (typeof num !== 'number' || !isFinite(num)) return num;
+            const factor = Math.pow(10, precision);
+            return Math.round(num * factor) / factor;
+        }
+
+        function isDefaultValue(key, value) {
+            if (!removeDefaultValues) return false;
+            if (value === 0 || value === false || value === 1) return true;
+            if (key === 'nm' && (!value || value.trim() === '')) return true;
+            return false;
+        }
+
+        function cleanObject(obj) {
+            if (!obj || typeof obj !== 'object') return obj;
+
+            if (Array.isArray(obj)) {
+                for (let i = 0; i < obj.length; i++) {
+                    obj[i] = cleanObject(obj[i]);
+                }
+                return obj;
+            }
+
+            for (const key in obj) {
+                let val = obj[key];
+
+                if (typeof val === 'number') {
+                    obj[key] = roundNumber(val);
+                    continue;
+                }
+
+                if (val && typeof val === 'object') {
+                    obj[key] = cleanObject(val);
+                }
+
+                if (removeDefaultValues &&
+                    (defaultsToRemove.has(key) ||
+                        (key === 'a' && val === 0) ||
+                        (key === 'k' && typeof val === 'number'))) {
+                    if (isDefaultValue(key, val)) {
+                        delete obj[key];
+                    }
+                }
+            }
+            return obj;
+        }
+        function removeRedundantKeyframesInternal(animProp) {
+            if (!animProp || typeof animProp !== 'object' || animProp.a === 0) return animProp;
+            if (!Array.isArray(animProp.k) || animProp.k.length <= 1) return animProp;
+
+            const keyframes = animProp.k;
+            const firstValue = keyframes[0].s || keyframes[0].e || keyframes[0].k;
+            let isStatic = true;
+
+            for (let i = 1; i < keyframes.length; i++) {
+                const current = keyframes[i].s || keyframes[i].e || keyframes[i].k;
+                if (JSON.stringify(firstValue) !== JSON.stringify(current)) {
+                    isStatic = false;
+                    break;
+                }
+            }
+
+            if (isStatic) {
+                animProp.a = 0;
+                animProp.k = Array.isArray(firstValue) ? firstValue : (keyframes[0].s || keyframes[0].k || firstValue);
+                delete animProp.i;
+                delete animProp.o;
+                delete animProp.n;
+                delete animProp.t;
+            }
+            return animProp;
+        }
+
+        function processAnimationProperties(obj) {
+            if (!obj || typeof obj !== 'object') return;
+
+            if (Array.isArray(obj)) {
+                obj.forEach(processAnimationProperties);
+                return;
+            }
+
+            if (obj.ks) {
+                const ks = obj.ks;
+                ['o', 'r', 'p', 'a', 's', 'rx', 'ry', 'rz', 'sk', 'sa'].forEach(prop => {
+                    if (ks[prop]) {
+                        ks[prop] = removeRedundantKeyframesInternal(ks[prop]);
+                    }
+                });
+            }
+
+            if (obj.shapes && Array.isArray(obj.shapes)) {
+                obj.shapes.forEach(shape => {
+                    if (shape.it) processAnimationProperties(shape.it);
+                    if (shape.ks) shape.ks = removeRedundantKeyframesInternal(shape.ks);
+                });
+            }
+
+            if (obj.it && Array.isArray(obj.it)) {
+                processAnimationProperties(obj.it);
+            }
+
+            for (const key in obj) {
+                if (!['ks', 'shapes', 'it'].includes(key)) {
+                    processAnimationProperties(obj[key]);
+                }
+            }
+        }
+
+        // Основная обработка
+        cleanObject(json);
+
+        if (shouldRemoveRedundant) {
+            processAnimationProperties(json);
+            if (Array.isArray(json.layers)) processAnimationProperties(json.layers);
+            if (Array.isArray(json.assets)) processAnimationProperties(json.assets);
+        }
+
+        // Удаляем пустые объекты и массивы
+        function removeEmpty(obj) {
+            if (!obj || typeof obj !== 'object') return;
+            for (const key in obj) {
+                const val = obj[key];
+                if (val && typeof val === 'object') {
+                    removeEmpty(val);
+                    if ((Array.isArray(val) && val.length === 0) || Object.keys(val).length === 0) {
+                        delete obj[key];
+                    }
+                }
+            }
+        }
+        removeEmpty(json);
+
+        return json;
+    },
+    // парсим .lottie или принимаем json
+    async parseLottieInput(input) {
+        if (input && typeof input === 'object' && !(input instanceof Blob) && !(input instanceof ArrayBuffer) && !ArrayBuffer.isView(input)) {
+            const animId = (input.nm || 'animation').replace(/[^a-z0-9_-]/gi, '_').slice(0, 64) || 'animation';
+            return {data: input, animId};
+        }
+        // .lottie распаковываем
+        const raw = input instanceof Blob ? await input.arrayBuffer() : input;
+        const zip = await JSZip.loadAsync(raw);
+        const manifestFile = zip.file('manifest.json');
+        const manifest = manifestFile ? JSON.parse(await manifestFile.async('string')) : null;
+        const animId = manifest?.animations?.[0]?.id || 'animation';
+        const animFile = zip.file(`animations/${animId}.json`);
+        if (!animFile) throw new Error(`.lottie: не найден animations/${animId}.json`);
+        const data = JSON.parse(await animFile.async('string'));
+        // инлайним картинки из images/ в base64, чтобы Optimizer мог их обрабатывать
+        for (const asset of (data.assets || [])) {
+            if (!asset.p || asset.p.startsWith('data:')) continue;
+            const path = asset.u ? asset.u.replace(/\/$/, '') + '/' + asset.p : asset.p;
+            const file = zip.file(path) || zip.file('images/' + asset.p);
+            if (!file) continue;
+            const bytes = await file.async('uint8array');
+            const ext = asset.p.split('.').pop().toLowerCase();
+            const mime = {
+                png: 'image/png',
+                jpg: 'image/jpeg',
+                jpeg: 'image/jpeg',
+                webp: 'image/webp',
+                gif: 'image/gif'
+            }[ext] || 'image/png';
+            asset.p = `data:${mime};base64,${_uint8ToBase64(bytes)}`;
+            asset.u = '';
+            asset.e = 1;
+        }
+        return {data, animId};
+    },
+
     // последовательности кадров по id
     findSequences(assets) {
-        // только картинки с data:image и id
         const imageAssets = assets.filter(a => a.p?.startsWith('data:image') && a.id);
         const groups = new Map();
         for (const asset of imageAssets) {
-            const id = asset.id;
-            let prefix = '', num = -1;
-            // числовой id
-            if (/^\d+$/.test(id)) {
-                prefix = '_seq_numeric';
-                num = parseInt(id);
-            }
-            // frame_0000_хеш или image-001-uuid
-            if (num === -1) {
-                const m = id.match(/^(.+?)[-_](\d{2,})[-_][a-f0-9-]+$/i);
+            let id = asset.id.trim();
+            let prefix = '';
+            let num = -1;
+
+            // Чистим id от расширений и лишнего
+            id = id.replace(/\.(png|jpg|jpeg|webp|gif)$/i, '');
+            // Варианты паттернов
+            const patterns = [
+                /^(.+?)[-_](\d{3,})$/i,
+                /^(.+?)(\d{3,})$/i,
+                /^(.+?)[-_](\d+)/i,
+                /^(\D+)(\d+)$/i,
+                /^(\d+)$/
+            ];
+
+            for (const regex of patterns) {
+                const m = id.match(regex);
                 if (m) {
-                    prefix = m[1];
-                    num = parseInt(m[2]);
+                    prefix = m[1] ? m[1].replace(/[_-]$/, '') : '_numeric';
+                    num = parseInt(m[2] || m[1], 10);
+                    break;
                 }
             }
-            // image_0, frame_1, img-12
-            if (num === -1) {
-                const m = id.match(/^(.+?)[-_](\d+)$/);
-                if (m) {
-                    prefix = m[1];
-                    num = parseInt(m[2]);
-                }
-            }
-            // img0
-            if (num === -1) {
-                const m = id.match(/^([a-zA-Z]+)(\d+)$/);
-                if (m) {
-                    prefix = m[1];
-                    num = parseInt(m[2]);
-                }
-            }
-            if (num === -1) continue; // не подошло под последовательность
+            if (num === -1) continue;
             if (!groups.has(prefix)) groups.set(prefix, []);
-            groups.get(prefix).push({id, num});
+            groups.get(prefix).push({id: asset.id, num});
         }
         const sequences = [];
         for (const [prefix, items] of groups) {
-            if (items.length < 3) continue; // меньше 3 кадров — не считаем последовательностью
+            if (items.length < 2) continue;
             items.sort((a, b) => a.num - b.num);
-            const outPrefix = prefix === '_seq_numeric' ? 'sequence' : prefix;
+            // Проверяем, что номера идут подряд (или почти подряд)
+            let isConsecutive = true;
+            for (let i = 1; i < items.length; i++) {
+                if (items[i].num - items[i - 1].num > 2) {
+                    isConsecutive = false;
+                    break;
+                }
+            }
+            if (!isConsecutive && items.length < 5) continue;
             sequences.push({
-                prefix: outPrefix,
+                prefix: prefix === '_numeric' ? 'sequence' : prefix,
                 from: items[0].num,
                 to: items[items.length - 1].num,
                 count: items.length,
@@ -59,44 +252,36 @@ const Optimizer = {
 
         return sequences;
     },
-    // URL воркера на CDN — пользователю ничего не нужно копировать
+
+    // URL воркера на CDN
     _workerUrl: 'https://cdn.jsdelivr.net/gh/taamiioos/lottie-optimizer@main/src/worker.js',
 
-    // запуск оптимизации в отдельном воркере — не блокирует основной поток
+    // запуск оптимизации в отдельном воркере
     _runInWorker(data, options) {
         // поддерживает ли браузер вообще Web Workers
         if (typeof Worker === 'undefined') {
-            // Если нет
-            // просто запускаем ту же функцию Optimizer.run синхронно в текущем потоке
-            const {worker: _w, ...opts} = options;   // убираем опцию worker
+            const {worker: _w, ...opts} = options;
             return Optimizer.run(data, opts);
         }
         return new Promise((resolve, reject) => {
             let worker;
 
-            // пытаемся создать Worker
             try {
-                // ссылка
-                worker = new Worker(Optimizer._workerUrl, { type: 'module' });
+                worker = new Worker(Optimizer._workerUrl, {type: 'module'});
             } catch (err) {
-                // Если создание Worker провалилось, то fallback в главный поток
                 const {worker: _w, ...opts} = options;
-                resolve(Optimizer.run(data, opts));   // запускаем синхронно
+                resolve(Optimizer.run(data, opts));
                 return;
             }
 
-            // генерируем уникальный id для сообщений
             const id = Math.random().toString(36).slice(2);
+            const {
+                onProgress = () => {
+                }
+            } = options;
+            const {onProgress: _p, worker: _w, ...opts} = options;
 
-            // достаём колбэк onProgress
-            const { onProgress = () => {} } = options;
-
-            // готовим чистые options без worker и onProgress
-            const { onProgress: _p, worker: _w, ...opts } = options;
-
-            // слушаем сообщения ОТ worker в главный поток
-            worker.onmessage = ({ data: msg }) => {
-                // Проверяем, что сообщение именно для нашего запроса
+            worker.onmessage = ({data: msg}) => {
                 if (msg.id !== id) return;
 
                 switch (msg.type) {
@@ -104,17 +289,13 @@ const Optimizer = {
                         onProgress(msg.info);
                         break;
                     case 'result':
-                        worker.terminate();  // закрываем worker, больше не нужен
-
-                        // восстанавливаем Blob из ArrayBuffer (zipBuffer пришёл transferable)
-                        const zip = new Blob([msg.result.zipBuffer], { type: 'application/zip' });
-
-                        // Формируем финальный объект результата
-                        const finalResult = { ...msg.result, zip, zipBuffer: undefined };
+                        worker.terminate();
+                        const lottie = new Blob([msg.result.zipBuffer], {type: 'application/zip'});
+                        const finalResult = {...msg.result, lottie, zip: lottie, zipBuffer: undefined};
                         if (finalResult.preview?.assets && data.assets?.length) {
                             const origById = new Map(data.assets.map(a => [a.id, a]));
                             for (const pa of finalResult.preview.assets) {
-                                if (pa._video && pa.id && !pa.p) {           // это видео-кадр без base64
+                                if (pa._video && pa.id && !pa.p) {
                                     const orig = origById.get(pa.id);
                                     if (orig?.p) pa.p = orig.p;
                                 }
@@ -130,47 +311,52 @@ const Optimizer = {
                 }
             };
 
-            // ловим критические ошибки создания/выполнения worker'а
             worker.onerror = (e) => {
                 worker.terminate();
                 reject(new Error('Worker: ' + e.message));
             };
 
-            // отправляем задачу В worker
             worker.postMessage({
                 id,
                 type: 'optimize',
-                data,           // исходные данные Lottie (json с assets)
-                options: opts   // очищенные опции (без worker и onProgress)
+                data,
+                options: opts
             });
         });
     },
+
     // главная функция оптимизации
-    async run(data, options = {}) {
+    async run(inputData, options = {}) {
         const {
             quality = 0.8,
             convertToVideo = true,
-            videoFps = data.fr || 24,
+            videoFps,
             videoBitrateMultiplier = 1,
-            onProgress = () => {},
-            worker = false
+            onProgress = () => {
+            },
+            worker = false,
+            _animId = null,
+            jsonPrecision = 3,
+            jsonMinify = true,
+            removeRedundantKeyframes = true
         } = options;
 
-        // если попросили воркер — делегируем всю работу туда
-        if (worker) return this._runInWorker(data, options);
+        // парсим входные данные
+        const parsed = await Optimizer.parseLottieInput(inputData);
+        const data = parsed.data;
+        const animId = _animId || parsed.animId;
+        if (worker) return this._runInWorker(data, {...options, _animId: animId});
+        const fps = videoFps ?? (data.fr || 24);
         const totalT0 = performance.now();
         // глубокие копии, чтобы не портить оригинальные данные
-        // не гоняет данные через строку и обратно
-        // result — будет в ZIP (без blob url), preview — для показа в браузере (с blob url)
         const result = structuredClone(data);
-        const preview = { ...data, assets: JSON.parse(JSON.stringify(data.assets || [])) };
+        const preview = {...data, assets: JSON.parse(JSON.stringify(data.assets || []))};
         const assets = result.assets || [];
         const previewAssets = preview.assets || [];
         const zip = new JSZip();
-        const hashMap = new Map(); // для поиска дубликатов по sha-256
+        const hashMap = new Map();
         const blobUrls = [];
 
-        // вся статистика сюда
         const stats = {
             totalImages: 0,
             uniqueImages: 0,
@@ -210,7 +396,7 @@ const Optimizer = {
         const videoFrameSeqIndex = new Map();
         const candidateVideoIds = new Set(sequences.flatMap(s => s.ids));
         const analysisT0 = performance.now();
-        onProgress({ phase: 'analysis', message: 'Загрузка ассетов...', percent: 2 });
+        onProgress({phase: 'analysis', message: 'Загрузка ассетов...', percent: 2});
         const blobCache = new Map();
         for (const a of assets.filter(a => a.p?.startsWith('data:image') && a.id)) {
             if (candidateVideoIds.has(a.id)) continue;
@@ -218,7 +404,6 @@ const Optimizer = {
             if (blob) blobCache.set(a.id, blob);
         }
 
-        // анализ
         await Promise.all(assets.map(async asset => {
             if (!asset.p?.startsWith('data:image')) return;
             stats.totalImages++;
@@ -230,7 +415,12 @@ const Optimizer = {
                 if (sz > stats.largestImage) stats.largestImage = sz;
                 if (sz < stats.smallestImage) stats.smallestImage = sz;
                 const mime = comma > 0 ? asset.p.slice(5, comma).split(';')[0] : '';
-                const fmt = {'image/webp': 'webp', 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif'}[mime] || 'png';
+                const fmt = {
+                    'image/webp': 'webp',
+                    'image/png': 'png',
+                    'image/jpeg': 'jpeg',
+                    'image/gif': 'gif'
+                }[mime] || 'png';
                 stats.formats[fmt] = (stats.formats[fmt] || 0) + 1;
                 return;
             }
@@ -264,7 +454,6 @@ const Optimizer = {
                 percent: 10
             });
         }
-
         // кодируем найденные последовательности в mp4
         const videoT0 = performance.now();
         let videoCounter = 0;
@@ -292,7 +481,7 @@ const Optimizer = {
 
                 try {
                     const videoResult = await VideoEncoderUtil.encode(frames, {
-                        fps: videoFps,
+                        fps,
                         bitrateMultiplier: videoBitrateMultiplier,
                         onProgress: (pct) => {
                             onProgress({
@@ -303,7 +492,6 @@ const Optimizer = {
                         }
                     });
 
-                    // если видео получилось больше оригиналов — не берём его
                     if (videoResult.blob.size >= originalSize) {
                         stats.videoSkipped++;
                         onProgress({
@@ -315,7 +503,7 @@ const Optimizer = {
                     }
 
                     const videoFile = `video/seq_${videoCounter}.mp4`;
-                    zip.file(videoFile, videoResult.blob, { compression: 'STORE' });
+                    zip.file(videoFile, videoResult.blob, {compression: 'STORE'});
 
                     const videoDetail = {
                         id: `video_${videoCounter}`,
@@ -362,7 +550,6 @@ const Optimizer = {
         // картинки, которые не ушли в видео — конвертируем в webp и кладём в zip
         const imgT0 = performance.now();
 
-        // собираем кандидатов на обработку, видеокадры закрываем сразу
         const candidates = [];
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
@@ -397,7 +584,7 @@ const Optimizer = {
             const hash = await ImageProcessor.hash(bytes);
             if (hashMap.has(hash)) {
                 const ref = hashMap.get(hash);
-                asset.u = 'assets/';
+                asset.u = 'images/';
                 asset.p = ref.file;
                 asset.e = 0;
                 previewAsset.u = '';
@@ -406,10 +593,9 @@ const Optimizer = {
                 stats.duplicates++;
                 return;
             }
-            // та же картинка уже обрабатывается другим параллельным воркером — ждём его результата
             if (processingMap.has(hash)) {
                 const ref = await processingMap.get(hash);
-                asset.u = 'assets/';
+                asset.u = 'images/';
                 asset.p = ref.file;
                 asset.e = 0;
                 previewAsset.u = '';
@@ -419,7 +605,6 @@ const Optimizer = {
                 return;
             }
 
-            // уникальное изображение — стартуем конвертацию и сразу регистрируем промис
             const promise = (async () => {
                 const processed = await ImageProcessor.process(blob, quality, bytes);
                 const outBlob = processed.blob;
@@ -445,7 +630,8 @@ const Optimizer = {
                 });
 
                 const fileName = `img_${hash.slice(0, 8)}.${ext}`;
-                zip.file(`assets/${fileName}`, outBlob, { compression: 'STORE' });
+                // изображения в images/ — стандартная папка формата .lottie
+                zip.file(`images/${fileName}`, outBlob, {compression: 'STORE'});
                 const url = URL.createObjectURL(outBlob);
                 blobUrls.push(url);
                 hashMap.set(hash, {file: fileName, url});
@@ -454,18 +640,16 @@ const Optimizer = {
 
             processingMap.set(hash, promise);
             const ref = await promise;
-            asset.u = 'assets/';
+            asset.u = 'images/';
             asset.p = ref.file;
             asset.e = 0;
             previewAsset.u = '';
             previewAsset.p = ref.url;
             previewAsset.e = 0;
         }
-        // 8 параллельных обработчиков — баланс между скоростью и памятью
+        // 8 параллельных обработчиков
         const CONCURRENCY = 8;
         const queue = [...candidates];
-
-        // каждый воркер берёт задачи из общей очереди пока она не пуста
         const imgWorker = async () => {
             while (queue.length > 0) await processOne(queue.shift())
         };
@@ -483,32 +667,54 @@ const Optimizer = {
             percent: 88
         });
 
-        // считаем итоги и собираем результат
         if (videoAssets.length > 0) {
             result.videoAssets = videoAssets;
         }
 
-        onProgress({phase: 'zip', message: 'Создание ZIP...', percent: 90});
+        onProgress({phase: 'zip', message: 'Создание .lottie...', percent: 90});
+
+        let finalJson = result;
+        if (jsonMinify) {
+            finalJson = Optimizer.minifyLottieJson(structuredClone(result), {
+                precision: jsonPrecision,
+                removeDefaultValues: true,
+                removeRedundantKeyframes: removeRedundantKeyframes,   // передаём опцию
+                aggressive: false
+            });
+        }
+
+        // Структура .lottie
+        const lottieManifest = {
+            animations: [{id: animId, speed: 1, themeColor: '#000000', direction: 1}],
+            version: '1.0',
+            author: '',
+            generator: 'lottie-optimizer'
+        };
+
+        zip.file('manifest.json', JSON.stringify(lottieManifest));
+        zip.file(`animations/${animId}.json`, JSON.stringify(finalJson));
 
         const zipT0 = performance.now();
-        const zipBlob = await zip.generateAsync({
+        const lottieBlob = await zip.generateAsync({
             type: 'blob',
-            compression: 'DEFLATE'
+            compression: 'DEFLATE',
         }, (meta) => {
             onProgress({
                 phase: 'zip',
-                message: `ZIP: ${meta.percent.toFixed(0)}%`,
+                message: `.lottie: ${meta.percent.toFixed(0)}%`,
                 percent: 90 + Math.round(meta.percent / 100 * 10)
             });
         });
 
         stats.zipTime = performance.now() - zipT0;
         stats.phaseTiming.zip = stats.zipTime;
+
         let _origB64Len = 0;
         for (const a of data.assets || []) if (a.p?.startsWith('data:')) _origB64Len += a.p.length;
-        stats.originalJsonSize = _origB64Len + 50000; // +50KB JSON-структура без изображений
-        stats.optimizedJsonSize = new Blob([JSON.stringify(result)]).size; // result без base64 — быстро
-        stats.zipFileSize = zipBlob.size;
+
+        stats.originalJsonSize = _origB64Len + 50000;
+        stats.optimizedJsonSize = new Blob([JSON.stringify(finalJson)]).size;
+        stats.zipFileSize = lottieBlob.size;
 
         stats.totalSaved = stats.originalJsonSize - (stats.optimizedJsonSize + stats.zipFileSize);
         stats.totalSavedPct = stats.originalJsonSize > 0
@@ -525,13 +731,15 @@ const Optimizer = {
         onProgress({phase: 'done', message: 'Готово!', percent: 100});
 
         return {
-            json: result,
+            json: finalJson,
             preview,
-            zip: zipBlob,
+            lottie: lottieBlob,
+            zip: lottieBlob,
             urls: blobUrls,
             stats,
             sequences,
-            videoAssets
+            videoAssets,
+            animId
         };
     }
 };

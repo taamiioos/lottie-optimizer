@@ -67,20 +67,12 @@
         </div>
     </section>
     <section class="pl-upload-card">
-        <input type="file" id="jsonInput" accept=".json" hidden>
+        <input type="file" id="jsonInput" accept=".json,.lottie" hidden>
         <input type="file" id="zipInput" accept=".zip" hidden>
-        <div class="pl-zones">
-            <div class="pl-zone" id="zoneJson">
-                <span class="pl-zone-label">JSON file</span>
-                <span class="pl-zone-hint" id="jsonHint">optimized.json</span>
-                <span class="pl-zone-size" id="jsonSize" style="display:none"></span>
-            </div>
-            <div class="pl-zone-divider"></div>
-            <div class="pl-zone" id="zoneZip">
-                <span class="pl-zone-label">ZIP archive</span>
-                <span class="pl-zone-hint" id="zipHint">assets.zip</span>
-                <span class="pl-zone-size" id="zipSize" style="display:none"></span>
-            </div>
+        <div class="pl-zone" id="zoneJson">
+            <span class="pl-zone-label">JSON / .lottie</span>
+            <span class="pl-zone-hint" id="jsonHint">animation.json / .lottie</span>
+            <span class="pl-zone-size" id="jsonSize" style="display:none"></span>
         </div>
         <div class="pl-compat-status" id="compatStatus"></div>
         <div class="pl-footer">
