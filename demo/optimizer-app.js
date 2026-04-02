@@ -372,28 +372,31 @@ function createSlotSettings(slotId, onApply) {
     return {el: container, readSettings};
 }
 
-// грузим все демки по очереди
-async function loadAllDemos() {
-    for (let i = 0; i < DEMOS.length; i++) {
-        const demo = DEMOS[i];
-        const text = $(`demo-text-${i}`);
-        text.textContent = 'Loading...';
+// загружаем одну демку по индексу
+async function loadDemo(i) {
+    const demo = DEMOS[i];
+    $(`demo-load-wrap-${i}`).style.display = 'none';
+    $(`demo-pair-${i}`).style.display = '';
+    $(`demo-progress-${i}`).style.display = '';
+    $(`demo-text-${i}`).textContent = 'Loading...';
 
-        try {
-            const resp = await fetch(demo.file);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            const fileSize = new Blob([JSON.stringify(data)]).size;
-            demoCache[i] = {data, fileSize, name: demo.name};
-            await optimizeSlotByIndex(data, i, demo.name, fileSize);
-        } catch (err) {
-            const bar = $(`demo-bar-${i}`);
-            const text2 = $(`demo-text-${i}`);
-            bar.classList.add('error');
-            bar.style.width = '100%';
-            text2.textContent = 'Error: ' + err.message;
-        }
+    try {
+        const resp = await fetch(demo.file);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const fileSize = new Blob([JSON.stringify(data)]).size;
+        demoCache[i] = {data, fileSize, name: demo.name};
+        await optimizeSlotByIndex(data, i, demo.name, fileSize);
+    } catch (err) {
+        $(`demo-bar-${i}`).classList.add('error');
+        $(`demo-bar-${i}`).style.width = '100%';
+        $(`demo-text-${i}`).textContent = 'Error: ' + err.message;
     }
+}
+
+// вешаем кнопки на каждую демку
+for (let i = 0; i < DEMOS.length; i++) {
+    $(`demo-load-btn-${i}`).onclick = () => loadDemo(i);
 }
 
 // загрузка своего файла
@@ -646,5 +649,3 @@ const setupDemoControls = (slot, animBefore, animAfter) => {
 }
 
 
-// запуск демки сразу при загрузке страницы
-loadAllDemos();
