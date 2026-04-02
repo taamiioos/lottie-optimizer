@@ -20,7 +20,7 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
 
         mp4file.onReady = (mp4info) => {
             const track = mp4info.videoTracks[0];
-            if (!track) return reject(new Error('Нет видеотрека'));
+            if (!track) return reject(new Error('No video track'));
             info = track;
             const trak = mp4file.getTrackById(track.id);
             for (const entry of trak.mdia.minf.stbl.stsd.entries) {
@@ -120,11 +120,11 @@ const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgre
 
     await new Promise((res, rej) => {
         video.onloadedmetadata = res;
-        video.onerror = () => rej(new Error('Браузер не смог загрузить видео'));
+        video.onerror = () => rej(new Error('Browser could not load video'));
     });
 
     const {videoWidth: w, videoHeight: h, duration} = video;
-    if (!w || !h) throw new Error('Видео не содержит видеодорожки');
+    if (!w || !h) throw new Error('Video has no video track');
 
     const total = Math.min(Math.ceil(duration * fps), maxFrames);
     const frameCanvases = [];
@@ -161,10 +161,10 @@ const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgre
 const _extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) => {
     if ('VideoDecoder' in window && typeof MP4Box !== 'undefined') {
         try {
-            console.log('[VideoToLottie] Используем WebCodecs + MP4Box (аппаратное/программное декодирование)');
+            console.log('[VideoToLottie] Using WebCodecs + MP4Box (hardware/software decoding)');
             return await _extractFramesWebCodecs(videoFile, fps, maxFrames, quality, onProgress);
         } catch (err) {
-            console.warn('[VideoToLottie] WebCodecs путь упал, переключаемся на seeked-фоллбэк:', err.message);
+            console.warn('[VideoToLottie] WebCodecs path failed, falling back to seeked:', err.message);
         }
     }
     // Фоллбэк для старых браузеров
@@ -209,12 +209,12 @@ const convertVideoToLottie = async (videoFile, {fps = 24, maxFrames = 150, quali
     const name = videoFile.name.replace(/\.[^.]+$/, '');
 
     const frameData = await _extractFrames(videoFile, fps, maxFrames, quality, (cur, total) => {
-        onProgress({phase: 'extract', message: `Извлечение кадров: ${cur} / ${total}`, current: cur, total, percent: Math.round(cur / total * 50)});
+        onProgress({phase: 'extract', message: `Extracting frames: ${cur} / ${total}`, current: cur, total, percent: Math.round(cur / total * 50)});
     });
-    onProgress({phase: 'build', message: 'Сборка Lottie JSON...', current: 0, total: frameData.frames.length, percent: 50});
+    onProgress({phase: 'build', message: 'Building Lottie JSON...', current: 0, total: frameData.frames.length, percent: 50});
 
     const json = await _buildLottieJson(frameData.frames, frameData.width, frameData.height, fps, name, (cur, total) => {
-        onProgress({phase: 'build', message: `Кодирование: ${cur} / ${total}`, current: cur, total, percent: 50 + Math.round(cur / total * 50)});
+        onProgress({phase: 'build', message: `Encoding: ${cur} / ${total}`, current: cur, total, percent: 50 + Math.round(cur / total * 50)});
     });
 
     return {json, frameStats: {count: frameData.total, totalFrameSize: frameData.totalFrameSize, width: frameData.width, height: frameData.height, duration: frameData.duration, fps}};
@@ -226,7 +226,7 @@ const $ = id => document.getElementById(id);
 
 const fmtTime = (sec) => {
     const m = Math.floor(sec / 60), s = (sec % 60).toFixed(1);
-    return m > 0 ? `${m}м ${s}с` : `${s}с`;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
 };
 
 const syncSlider = (rangeId, valId, decimals = 0) => {
@@ -284,7 +284,7 @@ const onFile = (file) => {
         $('infoName').textContent = file.name;
         $('infoRes').textContent  = `${probe.videoWidth}×${probe.videoHeight}`;
         $('infoDur').textContent  = fmtTime(probe.duration);
-        $('infoEst').textContent  = Math.ceil(probe.duration * fps) + ' кадр(ов)';
+        $('infoEst').textContent  = Math.ceil(probe.duration * fps) + ' frame(s)';
         $('mainCard').hidden      = false;
         $('resultBlock').hidden   = true;
         // сбрасываем прогресс-бар
@@ -292,11 +292,11 @@ const onFile = (file) => {
         $('progressFill').className   = 'progressBarFill';
         $('progressText').textContent = '';
 
-        uploadArea.querySelector('.uploadText').innerHTML = `<strong>${file.name}</strong> загружено`;
+        uploadArea.querySelector('.uploadText').innerHTML = `<strong>${file.name}</strong> loaded`;
     };
     probe.onerror = () => {
         URL.revokeObjectURL(url);
-        uploadArea.querySelector('.uploadText').textContent = 'Не удалось прочитать видео';
+        uploadArea.querySelector('.uploadText').textContent = 'Failed to read video';
     };
 
     $('convertBtn').onclick = () => startConvert(file);
@@ -333,12 +333,12 @@ const startConvert = async (file) => {
         const elapsed = performance.now() - t0;
         bar.style.width = '100%';
         bar.classList.add('done');
-        txt.textContent = 'Готово за ' + fmtTime(elapsed / 1000);
+        txt.textContent = 'Done in ' + fmtTime(elapsed / 1000);
         resultJson = json;
         showResult(json, frameStats, elapsed);
     } catch (err) {
         bar.className   = 'progressBarFill error';
-        txt.textContent = 'Ошибка: ' + err.message;
+        txt.textContent = 'Error: ' + err.message;
         console.error(err);
     } finally {
         // разблокируем управление
@@ -373,7 +373,7 @@ const showResult = (json, frameStats, elapsed = 0) => {
     box.innerHTML = '';
     try {
         lottie.loadAnimation({container: box, renderer: 'canvas', loop: true, autoplay: true, animationData: json, assetsPath: ''});
-    } catch { box.textContent = 'Превью недоступно'; }
+    } catch { box.textContent = 'Preview not available'; }
 };
 
 const resetTool = () => {
@@ -387,7 +387,7 @@ const resetTool = () => {
     $('progressText').textContent = '';
     [$('convertBtn'), $('resetSettingsBtn'), $('fpsRange'), $('maxFramesRange'), $('qualityRange')]
         .forEach(el => { el.disabled = false; });
-    uploadArea.querySelector('.uploadText').textContent = 'Перетащите видео или нажмите для загрузки';
+    uploadArea.querySelector('.uploadText').textContent = 'Drop video here or click to upload';
 };
 $('resetBtn').onclick         = resetTool;
 $('resetSettingsBtn').onclick = resetTool;

@@ -8,7 +8,7 @@ const fmt = (bytes) => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];
 };
-const fmtTime = (ms) => ms < 1000 ? ms.toFixed(0) + ' мс' : (ms / 1000).toFixed(2) + ' с';
+const fmtTime = (ms) => ms < 1000 ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixed(2) + ' s';
 
 // глобальное состояние плеера: загруженные файлы и текущая анимация
 const state = {json: null, zipBlob: null, anim: null};
@@ -32,7 +32,7 @@ const setupZone = (zoneId, inputId, onFile) => {
 
 setupZone('zoneJson', 'jsonInput', async (file) => {
     try { state.json = JSON.parse(await file.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', file.name, file.size); }
-    catch { showCompatStatus('error', 'Файл не является валидным JSON'); return; }
+    catch { showCompatStatus('error', 'Not a valid JSON file'); return; }
     checkReady();
     checkCompatibility();
 });
@@ -48,7 +48,7 @@ $('jsonInput').onchange = async (e) => {
     const f = e.target.files[0];
     if (f) {
         try { state.json = JSON.parse(await f.text()); markZoneLoaded('zoneJson', 'jsonHint', 'jsonSize', f.name, f.size); }
-        catch { showCompatStatus('error', 'Файл не является валидным JSON'); e.target.value = ''; return; }
+        catch { showCompatStatus('error', 'Not a valid JSON file'); e.target.value = ''; return; }
         checkReady();
         checkCompatibility();
     }
@@ -82,12 +82,12 @@ const checkCompatibility = async () => {
     if (result.errors.length > 0) {
         // нужен ZIP, но ещё не загружен — это не ошибка совместимости, а подсказка
         if (result.requiresZip && !state.zipBlob) {
-            showCompatStatus('warn', 'Нужен ZIP архив');
+            showCompatStatus('warn', 'ZIP archive required');
         } else {
-            showCompatStatus('error', 'Файлы несовместимы');
+            showCompatStatus('error', 'Files are incompatible');
         }
     } else {
-        showCompatStatus('ok', result.requiresZip ? 'Файлы совместимы' : 'Файл готов');
+        showCompatStatus('ok', result.requiresZip ? 'Files are compatible' : 'File ready');
     }
 };
 
@@ -100,7 +100,7 @@ const resetPlayer = () => {
     $('jsonSize').style.display = 'none';
     $('zipSize').style.display  = 'none';
     $('btnPlay').disabled  = true;
-    $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Воспроизвести</span>';
+    $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Play</span>';
     $('playerWrap').style.display = 'none';
     $('playerWrap').classList.remove('playing');
     $('playerPlaceholder').classList.remove('hidden');
@@ -123,9 +123,9 @@ const setProgress = (pct, text) => {
 // воспроизведение
 $('btnPlay').onclick = async () => {
     $('btnPlay').disabled  = true;
-    $('btnPlay').innerHTML = '<span>Загрузка...</span>';
+    $('btnPlay').innerHTML = '<span>Loading...</span>';
     $('progressFill').classList.remove('done', 'error');
-    setProgress(0, 'Проверка файлов...');
+    setProgress(0, 'Validating files...');
 
     const totalT0 = performance.now();
 
@@ -136,14 +136,14 @@ $('btnPlay').onclick = async () => {
             $('progressFill').classList.add('error');
             setProgress(100, compat.errors[0]);
             $('btnPlay').disabled = false;
-            $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Воспроизвести</span>';
+            $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Play</span>';
             return;
         }
 
         const {data, stats} = await Player.restoreInWorker(state.json, state.zipBlob || null, {
             onProgress: (info) => {
                 if (info.phase === 'images') {
-                    setProgress(5 + Math.round(info.percent * 0.85), `Картинка ${info.current}/${info.total}`);
+                    setProgress(5 + Math.round(info.percent * 0.85), `Image ${info.current}/${info.total}`);
                 } else if (info.phase === 'video') {
                     setProgress(35 + Math.round(info.percent * 0.50), info.message);
                 }
@@ -151,7 +151,7 @@ $('btnPlay').onclick = async () => {
         });
 
         const lottieT0 = performance.now();
-        setProgress(90, 'Инициализация Lottie...');
+        setProgress(90, 'Initializing Lottie...');
 
         state.anim?.destroy();
         $('player').innerHTML = '';
@@ -176,9 +176,9 @@ $('btnPlay').onclick = async () => {
 
     } catch (err) {
         $('progressFill').classList.add('error');
-        setProgress(100, 'Ошибка: ' + err.message);
+        setProgress(100, 'Error: ' + err.message);
         $('btnPlay').disabled  = false;
-        $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Воспроизвести</span>';
+        $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Play</span>';
         console.error(err);
     }
 };
@@ -241,55 +241,61 @@ const renderStats = (s) => {
     let html = '<div class="statsInner">';
 
     html += '<div class="statsGrid">';
-    html += `<div class="statBox"><div class="statLabel">Итого</div><div class="statValue">${fmtTime(s.totalTime)}</div></div>`;
+    html += `<div class="statBox"><div class="statLabel">Total</div><div class="statValue">${fmtTime(s.totalTime)}</div></div>`;
     if (s.imageCount > 0)
-        html += `<div class="statBox"><div class="statLabel">Картинки</div><div class="statValue">${s.imageCount}</div><div class="statDetail">${fmt(s.imageTotalSize)}</div></div>`;
+        html += `<div class="statBox"><div class="statLabel">Images</div><div class="statValue">${s.imageCount}</div><div class="statDetail">${fmt(s.imageTotalSize)}</div></div>`;
     if (s.videoTotalFrames > 0)
-        html += `<div class="statBox"><div class="statLabel">Кадры видео</div><div class="statValue">${s.videoTotalFrames}</div><div class="statDetail">${s.videoCount} видео · ${fmt(s.videoTotalSize)}</div></div>`;
+        html += `<div class="statBox"><div class="statLabel">Video frames</div><div class="statValue">${s.videoTotalFrames}</div><div class="statDetail">${s.videoCount} videos · ${fmt(s.videoTotalSize)}</div></div>`;
     html += '</div>';
 
     const phaseSum = s.imageDecodeTime + s.videoDecodeTime + (s.lottieInitTime || 0) || 1;
-    html += '<div class="statsTableTitle">Время работы</div><div class="timingBar">';
+    html += '<div class="statsTableTitle">Processing time</div><div class="timingBar">';
     if (s.imageCount > 0)       html += `<div class="timingSegment images" style="width:${s.imageDecodeTime / phaseSum * 100}%"></div>`;
     if (s.videoTotalFrames > 0) html += `<div class="timingSegment video"  style="width:${s.videoDecodeTime  / phaseSum * 100}%"></div>`;
     if (s.lottieInitTime > 0)   html += `<div class="timingSegment zip"    style="width:${s.lottieInitTime   / phaseSum * 100}%"></div>`;
     html += '</div><div class="timingLegend">';
-    if (s.imageCount > 0)       html += `<span class="tImages">Картинки&nbsp;${fmtTime(s.imageDecodeTime)}</span>`;
-    if (s.videoTotalFrames > 0) html += `<span class="tVideo">Видео&nbsp;${fmtTime(s.videoDecodeTime)}</span>`;
-    html += `<span class="tZip">Запуск&nbsp;${fmtTime(s.lottieInitTime || 0)}</span></div>`;
-    html += `<table class="statsTable"><tr><td>Итого</td><td>${fmtTime(s.totalTime)}</td></tr></table>`;
+    if (s.imageCount > 0)       html += `<span class="tImages">Images&nbsp;${fmtTime(s.imageDecodeTime)}</span>`;
+    if (s.videoTotalFrames > 0) html += `<span class="tVideo">Video&nbsp;${fmtTime(s.videoDecodeTime)}</span>`;
+    html += `<span class="tZip">Init&nbsp;${fmtTime(s.lottieInitTime || 0)}</span></div>`;
+    const decodeFps = s.videoTotalFrames > 0 && s.videoDecodeTime > 0
+        ? (s.videoTotalFrames / (s.videoDecodeTime / 1000)).toFixed(1)
+        : null;
+    html += `<table class="statsTable">
+        <tr><td>Total</td><td>${fmtTime(s.totalTime)}</td></tr>
+        ${decodeFps ? `<tr><td>Decode speed</td><td>${decodeFps} frames/sec</td></tr>` : ''}
+    </table>`;
 
     html += '<div class="resultBlock">';
 
     if (animW > 0) {
         html += `<div class="resultCard" style="border-left-color:#475569">
-            <div class="rcHead"><span class="rcTitle">АНИМАЦИЯ</span><span class="rcBadge">${animW}×${animH} · ${animFps} fps</span></div>
-            <div class="rtBody">${rows([['Размер', `${animW}×${animH} px`], ['FPS', `${animFps}`], ['Длительность', `${animDur} с`], ['Кадров', `${animFrames}`]])}</div>
+            <div class="rcHead"><span class="rcTitle">ANIMATION</span><span class="rcBadge">${animW}×${animH} · ${animFps} fps</span></div>
+            <div class="rtBody">${rows([['Size', `${animW}×${animH} px`], ['FPS', `${animFps}`], ['Duration', `${animDur} s`], ['Frames', `${animFrames}`]])}</div>
         </div>`;
     }
 
     if (s.imageCount > 0) {
-        const imgItems = [['Файлов', `${s.imageCount} шт.`], ['Суммарный размер', fmt(s.imageTotalSize)], ['Время', fmtTime(s.imageDecodeTime)]];
-        if (s.imageDecodeTime > 0) imgItems.push(['Скорость', `${(s.imageCount / (s.imageDecodeTime / 1000)).toFixed(1)} файл/с`]);
+        const imgItems = [['Files', `${s.imageCount}`], ['Total size', fmt(s.imageTotalSize)], ['Time', fmtTime(s.imageDecodeTime)]];
+        if (s.imageDecodeTime > 0) imgItems.push(['Speed', `${(s.imageCount / (s.imageDecodeTime / 1000)).toFixed(1)} files/s`]);
         html += `<div class="resultCard" style="border-left-color:var(--accent)">
-            <div class="rcHead"><span class="rcTitle">ИЗОБРАЖЕНИЯ</span><span class="rcBadge">${s.imageCount} файлов</span></div>
+            <div class="rcHead"><span class="rcTitle">IMAGES</span><span class="rcBadge">${s.imageCount} files</span></div>
             <div class="rtBody">${rows(imgItems)}</div>
         </div>`;
     }
 
     for (const vd of s.videoDetails) {
         const vItems = [
-            ['Разрешение', `${vd.width}×${vd.height} px`],
-            ['Кадров', `${vd.frames} шт. @ ${vd.fps} fps`],
-            ['Размер', fmt(vd.fileSize)],
-            ['Время', fmtTime(vd.extractTime)],
-            ['Среднее на кадр', fmtTime(vd.avgFrameExtract)],
-            ['Ускорение', vd.hardwareAccel],
+            ['Resolution', `${vd.width}×${vd.height} px`],
+            ['Frames', `${vd.frames} @ ${vd.fps} fps`],
+            ['Size', fmt(vd.fileSize)],
+            ['Time', fmtTime(vd.extractTime)],
+            ['Avg per frame', fmtTime(vd.avgFrameExtract)],
+            ['Acceleration', vd.hardwareAccel],
             ['Decoder API', vd.decoderApi],
         ];
-        if (vd.frames > 0 && vd.extractTime > 0) vItems.push(['Скорость', `${(vd.frames / (vd.extractTime / 1000)).toFixed(1)} кадр/с`]);
+        if (vd.frames > 0 && vd.extractTime > 0) vItems.push(['Speed', `${(vd.frames / (vd.extractTime / 1000)).toFixed(1)} fps`]);
         html += `<div class="resultCard" style="border-left-color:#6366f1">
-            <div class="rcHead"><span class="rcTitle">ВИДЕО</span><span class="rcBadge">${vd.file}</span></div>
+            <div class="rcHead"><span class="rcTitle">VIDEO</span><span class="rcBadge">${vd.file}</span></div>
             <div class="rtBody">${rows(vItems)}</div>
         </div>`;
     }

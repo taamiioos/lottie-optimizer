@@ -27,7 +27,7 @@ const createAnim = (container, data) => {
 }
 
 // выводим время
-const fmtTime = (ms) => (ms < 1000) ? ms.toFixed(0) + ' мс' : (ms / 1000).toFixed(2) + ' с';
+const fmtTime = (ms) => (ms < 1000) ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixed(2) + ' s';
 
 // рендерим всю статистику в блоке
 const renderStats = (container, stats, originalFileSize, animData) => {
@@ -56,17 +56,17 @@ const renderStats = (container, stats, originalFileSize, animData) => {
     // три карточки
     html += `<div class="statsGrid">
             <div class="statBox">
-                <div class="statLabel">Было</div>
+                <div class="statLabel">Before</div>
                 <div class="statValue">${formatSize(originalFileSize)}</div>
                 <div class="statDetail">JSON + base64</div>
             </div>
             <div class="statBox">
-                <div class="statLabel">Стало</div>
+                <div class="statLabel">After</div>
                 <div class="statValue">${formatSize(totalAfter)}</div>
                 <div class="statDetail">JSON ${formatSize(jsonAfter)} + ZIP ${formatSize(zipSize)}</div>
             </div>
             <div class="statBox ${cls}">
-                <div class="statLabel">Сэкономлено</div>
+                <div class="statLabel">Saved</div>
                 <div class="statValue">${savedPct} %</div>
                 <div class="statDetail">${formatSize(Math.abs(saved))}</div>
             </div>
@@ -75,7 +75,7 @@ const renderStats = (container, stats, originalFileSize, animData) => {
     // тайминг
     const pt = stats.phaseTiming;
     const phaseSum = (pt.analysis || 0) + (pt.videoEncoding || 0) + (pt.imageProcessing || 0) + (pt.zip || 0) || 1;
-    html += '<div class="statsTableTitle">Время работы</div>';
+    html += '<div class="statsTableTitle">Processing time</div>';
     html += '<div class="timingBar">';
     html += `<div class="timingSegment analysis" style="width:${(pt.analysis || 0) / phaseSum * 100}%"></div>`;
     html += `<div class="timingSegment video"   style="width:${(pt.videoEncoding || 0) / phaseSum * 100}%"></div>`;
@@ -84,21 +84,21 @@ const renderStats = (container, stats, originalFileSize, animData) => {
     html += `<div class="timingSegment zip"     style="width:${(pt.zip || 0) / phaseSum * 100}%"></div>`;
     html += '</div>';
     html += '<div class="timingLegend">';
-    html += `<span class="tAnalysis">Анализ&nbsp;${fmtTime(pt.analysis || 0)}</span>`;
-    html += `<span class="tVideo">Видео&nbsp;${fmtTime(pt.videoEncoding || 0)}</span>`;
-    if (showImgTiming) html += `<span class="tImages">Картинки&nbsp;${fmtTime(pt.imageProcessing || 0)}</span>`;
+    html += `<span class="tAnalysis">Analysis&nbsp;${fmtTime(pt.analysis || 0)}</span>`;
+    html += `<span class="tVideo">Video&nbsp;${fmtTime(pt.videoEncoding || 0)}</span>`;
+    if (showImgTiming) html += `<span class="tImages">Images&nbsp;${fmtTime(pt.imageProcessing || 0)}</span>`;
     html += `<span class="tZip">ZIP&nbsp;${fmtTime(pt.zip || 0)}</span>`;
     html += '</div>';
     html += '<table class="statsTable">';
     if (animData && animData.fr > 0) {
         const animDurSec = (animData.op - animData.ip) / animData.fr;
-        html += `<tr><td>Длительность анимации</td><td>${animDurSec.toFixed(2)} с</td></tr>`;
+        html += `<tr><td>Animation duration</td><td>${animDurSec.toFixed(2)} s</td></tr>`;
     }
-    html += `<tr><td>Общее время оптимизации</td><td>${fmtTime(stats.totalTime)}</td></tr>`;
+    html += `<tr><td>Total optimization time</td><td>${fmtTime(stats.totalTime)}</td></tr>`;
 
     if (stats.totalImages > 0 && stats.totalTime > 0) {
         const ips = (stats.totalImages / (stats.totalTime / 1000)).toFixed(2);
-        html += `<tr><td>Скорость обработки изображений</td><td>${ips} шт./сек</td></tr>`;
+        html += `<tr><td>Image processing speed</td><td>${ips} img/sec</td></tr>`;
     }
 
     html += '</table>';
@@ -109,23 +109,23 @@ const renderStats = (container, stats, originalFileSize, animData) => {
 
     if (stats.totalImages > 0) {
         html += `<div class="resultCard" style="border-left-color:#475569">`;
-        html += `<div class="rcHead"> <span class="rcTitle">ИЗОБРАЖЕНИЯ В АНИМАЦИИ</span> </div>`;
+        html += `<div class="rcHead"> <span class="rcTitle">ANIMATION IMAGES</span> </div>`;
 
         const fmtsAll = Object.entries(stats.formats || {})
             .map(([k, v]) => `${k.toUpperCase()}: ${v}`)
             .join(', ') || '—';
 
         const assetItems = [
-            ['Всего изображений', `${stats.totalImages} шт.`],
-            ['Форматы файлов', fmtsAll],
+            ['Total images', `${stats.totalImages}`],
+            ['File formats', fmtsAll],
         ];
 
         if (stats.framesInVideo > 0) {
-            assetItems.push(['Кадры в видео-последовательностях', `${stats.framesInVideo} шт.`]);
+            assetItems.push(['Frames in video sequences', `${stats.framesInVideo}`]);
         }
 
         if (imgCount > 0) {
-            assetItems.push(['Одиночные изображения', `${imgCount} шт.`]);
+            assetItems.push(['Single images', `${imgCount}`]);
         }
 
         html += `<div class="rtBody">${rows(assetItems)}</div>`;
@@ -136,25 +136,24 @@ const renderStats = (container, stats, originalFileSize, animData) => {
 
     if (totalSeqFound > 0) {
         html += `<div class="resultCard" style="border-left-color:#6366f1">`;
-        html += `<div class="rcHead"> <span class="rcTitle">ВИДЕО ИЗ ПОСЛЕДОВАТЕЛЬНОСТЕЙ</span> </div>`;
+        html += `<div class="rcHead"> <span class="rcTitle">VIDEO FROM SEQUENCES</span> </div>`;
 
-        // Сводка по всем найденным последовательностям
         const seqSummary = [
-            ['Найдено последовательностей кадров', `${totalSeqFound} шт.`],
+            ['Frame sequences found', `${totalSeqFound}`],
         ];
 
         if (stats.sequences > 0) {
-            seqSummary.push(['Успешно закодировано в видео', `${stats.sequences} шт.`]);
+            seqSummary.push(['Encoded to video', `${stats.sequences}`]);
         }
 
         if (stats.videoSize > 0) {
-            seqSummary.push(['Размер полученного видео', formatSize(stats.videoSize)]);
+            seqSummary.push(['Encoded video size', formatSize(stats.videoSize)]);
         }
 
         if (stats.videoSkipped > 0) {
             seqSummary.push([
-                'Пропущено (не уменьшило размер)',
-                `${stats.videoSkipped} шт.`,
+                'Skipped (no size reduction)',
+                `${stats.videoSkipped}`,
                 'rtVal--warn'
             ]);
         }
@@ -169,38 +168,38 @@ const renderStats = (container, stats, originalFileSize, animData) => {
             html += `<div class="vSubHead"> <span>${vd.file}</span> </div>`;
 
             const vItems = [
-                ['Разрешение', `${vd.width} × ${vd.height} px`],
-                ['Количество кадров', `${vd.frames} шт.`],
-                ['Частота кадров', `${vd.fps} fps`],
-                ['Длительность', `${vd.duration.toFixed(2)} сек`],
-                ['Исходный размер последовательности', formatSize(vd.originalSize || vd.fileSize || 0)],
-                ['Степень сжатия', `${parseFloat(vd.compressionRatio || 0).toFixed(1)} %`],
-                ['Кодек', 'H.264'],
+                ['Resolution', `${vd.width} × ${vd.height} px`],
+                ['Frame count', `${vd.frames}`],
+                ['Frame rate', `${vd.fps} fps`],
+                ['Duration', `${vd.duration.toFixed(2)} s`],
+                ['Original sequence size', formatSize(vd.originalSize || vd.fileSize || 0)],
+                ['Compression', `${parseFloat(vd.compressionRatio || 0).toFixed(1)} %`],
+                ['Codec', 'H.264'],
             ];
 
             if (es.keyFrames !== undefined) {
-                vItems.push(['Ключевых кадров', `${es.keyFrames} шт.`]);
-                vItems.push(['Дельта-кадров', `${es.deltaFrames} шт.`]);
+                vItems.push(['I-frames', `${es.keyFrames}`]);
+                vItems.push(['Delta frames', `${es.deltaFrames}`]);
             }
 
             if (es.encodeTime) {
-                vItems.push(['Время кодирования', fmtTime(es.encodeTime)]);
+                vItems.push(['Encoding time', fmtTime(es.encodeTime)]);
 
                 if (es.loadTime) {
-                    vItems.push(['Время загрузки кадров', fmtTime(es.loadTime)]);
+                    vItems.push(['Frame load time', fmtTime(es.loadTime)]);
                     vItems.push([
-                        'Скорость загрузки',
-                        `${(vd.frames / (es.loadTime / 1000)).toFixed(1)} кадров/сек`
+                        'Load speed',
+                        `${(vd.frames / (es.loadTime / 1000)).toFixed(1)} frames/sec`
                     ]);
                 }
 
                 vItems.push([
-                    'Скорость кодирования',
-                    `${(vd.frames / (es.encodeTime / 1000)).toFixed(1)} кадров/сек`
+                    'Encoding speed',
+                    `${(vd.frames / (es.encodeTime / 1000)).toFixed(1)} frames/sec`
                 ]);
 
                 if (es.muxTime) {
-                    vItems.push(['Время мультиплексирования', fmtTime(es.muxTime)]);
+                    vItems.push(['Mux time', fmtTime(es.muxTime)]);
                 }
             }
 
@@ -214,7 +213,7 @@ const renderStats = (container, stats, originalFileSize, animData) => {
     // блок ОДИНОЧНЫЕ КАРТИНКИ
     if (imgCount > 0) {
         html += `<div class="resultCard" style="border-left-color:var(--accent)">`;
-        html += `<div class="rcHead"> <span class="rcTitle">ОДИНОЧНЫЕ ИЗОБРАЖЕНИЯ</span> </div>`;
+        html += `<div class="rcHead"> <span class="rcTitle">SINGLE IMAGES</span> </div>`;
 
         const singleBefore = stats.singleImagesSizeBefore || 0;
         const singleAfter  = stats.sizeAfter || 0;
@@ -226,26 +225,26 @@ const renderStats = (container, stats, originalFileSize, animData) => {
             : '100.0';
 
         const imgItems = [
-            ['Всего уникальных', `${stats.uniqueImages || 0} шт.`],
+            ['Unique total', `${stats.uniqueImages || 0}`],
         ];
 
         if (stats.duplicates > 0) {
-            imgItems.push(['Дубликатов (объединено)', `${stats.duplicates} шт.`, 'rtVal--warn']);
+            imgItems.push(['Duplicates (merged)', `${stats.duplicates}`, 'rtVal--warn']);
         }
 
         imgItems.push(
-            ['Конвертировано в WebP', `${stats.webpConversions || 0} шт.`, 'rtVal--accent']
+            ['Converted to WebP', `${stats.webpConversions || 0}`, 'rtVal--accent']
         );
 
         if (stats.keptOriginal > 0) {
-            imgItems.push(['Формат не изменён (WebP хуже)', `${stats.keptOriginal} шт.`]);
+            imgItems.push(['Format unchanged (WebP worse)', `${stats.keptOriginal}`]);
         }
 
         imgItems.push(
-            ['Размер до', formatSize(singleBefore)],
-            ['Размер после', formatSize(singleAfter)],
-            ['Степень сжатия', `${singleRatio} %`],
-            ['Экономия', `${singleSavedPct} %`, singleSavedPct > 0 ? 'rtVal--accent' : '']
+            ['Size before', formatSize(singleBefore)],
+            ['Size after', formatSize(singleAfter)],
+            ['Compression', `${singleRatio} %`],
+            ['Savings', `${singleSavedPct} %`, singleSavedPct > 0 ? 'rtVal--accent' : '']
         );
 
         html += `<div class="rtBody">${rows(imgItems)}</div>`;
@@ -268,7 +267,7 @@ const runOptimizeSlot = async (data, index, fileName, fileSize, settings) => {
 
     bar.style.width = '0%';
     bar.className = 'progressBarFill';
-    text.textContent = 'Оптимизация...';
+    text.textContent = 'Optimizing...';
     statsEl.innerHTML = '';
 
     try {
@@ -282,7 +281,7 @@ const runOptimizeSlot = async (data, index, fileName, fileSize, settings) => {
 
         bar.style.width = '100%';
         bar.classList.add('done');
-        text.textContent = `Готово за ${(result.stats.totalTime / 1000).toFixed(2)} с`;
+        text.textContent = `Done in ${(result.stats.totalTime / 1000).toFixed(2)} s`;
 
         let animAfter = null;
         try {
@@ -299,7 +298,7 @@ const runOptimizeSlot = async (data, index, fileName, fileSize, settings) => {
     } catch (err) {
         bar.classList.add('error');
         bar.style.width = '100%';
-        text.textContent = 'Ошибка: ' + err.message;
+        text.textContent = 'Error: ' + err.message;
         console.error(err);
         return null;
     }
@@ -315,7 +314,7 @@ const optimizeSlotByIndex = async (data, index, fileName, fileSize) => {
     try {
         animBefore = createAnim(beforeEl, data);
     } catch (e) {
-        log.err(`[${fileName}] не удалось отрисовать оригинал — ${e.message}`);
+        log.err(`[${fileName}] failed to render original — ${e.message}`);
     }
 
     // создаём панель настроек один раз для слота
@@ -347,12 +346,12 @@ function createSlotSettings(slotId, onApply) {
     container.innerHTML = `
         <div class="slotSettingsControls">
             <div class="slotSettingRow">
-                <span class="slotSettingLabel">Качество WebP</span>
+                <span class="slotSettingLabel">WebP quality</span>
                 <input type="range" class="slotRange" id="${slotId}-webp" min="0.1" max="0.95" step="0.05" value="0.8">
                 <span class="slotRangeVal" id="${slotId}-webp-val">0.80</span>
             </div>
         </div>
-        <button class="slotApplyBtn" id="${slotId}-apply">Применить</button>`;
+        <button class="slotApplyBtn" id="${slotId}-apply">Apply</button>`;
 
     const webpEl = container.querySelector(`#${slotId}-webp`);
     const webpVal = container.querySelector(`#${slotId}-webp-val`);
@@ -380,7 +379,7 @@ async function loadAllDemos() {
     for (let i = 0; i < DEMOS.length; i++) {
         const demo = DEMOS[i];
         const text = $(`demo-text-${i}`);
-        text.textContent = 'Качаем...';
+        text.textContent = 'Loading...';
 
         try {
             const resp = await fetch(demo.file);
@@ -394,7 +393,7 @@ async function loadAllDemos() {
             const text2 = $(`demo-text-${i}`);
             bar.classList.add('error');
             bar.style.width = '100%';
-            text2.textContent = 'Ошибка: ' + err.message;
+            text2.textContent = 'Error: ' + err.message;
         }
     }
 }
@@ -433,7 +432,7 @@ const runOptimizeUserSlot = async (data, fileSize, name, settings) => {
 
     bar.style.width = '0%';
     bar.className = 'progressBarFill';
-    text.textContent = 'Оптимизируем...';
+    text.textContent = 'Optimizing...';
     statsEl.innerHTML = '';
 
     const animBefore = slotSettingsMap['user']?.animBefore;
@@ -450,7 +449,7 @@ const runOptimizeUserSlot = async (data, fileSize, name, settings) => {
         userResult = result;
         bar.style.width = '100%';
         bar.classList.add('done');
-        text.textContent = `Готово за ${(result.stats.totalTime / 1000).toFixed(2)} с`;
+        text.textContent = `Done in ${(result.stats.totalTime / 1000).toFixed(2)} s`;
 
         let animAfter = null;
         try {
@@ -465,7 +464,7 @@ const runOptimizeUserSlot = async (data, fileSize, name, settings) => {
     } catch (err) {
         bar.classList.add('error');
         bar.style.width = '100%';
-        text.textContent = 'Ошибка: ' + err.message;
+        text.textContent = 'Error: ' + err.message;
         console.error(err);
     }
 };
@@ -530,7 +529,7 @@ const resetUserSlot = () => {
     $('user-bar').style.width = '0%';
     $('user-bar').className = 'progressBarFill';
     $('user-text').textContent = '';
-    $('user-name').textContent = 'Ваш файл';
+    $('user-name').textContent = 'Your file';
 };
 $('resetUserBtn').onclick = resetUserSlot;
 

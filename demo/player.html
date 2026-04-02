@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,11 +23,11 @@
                 </svg>
                 Lottie Optimizer
             </a>
-            <h1 class="pl-title">Lottie Плеер</h1>
+            <h1 class="pl-title">Lottie Player</h1>
         </div>
         <div class="app-header-nav-player">
             <button class="tool-reset-btn" id="btnReset">
-                Сбросить
+                Reset
             </button>
             <a href="../video-to-lottie/video-to-lottie.html" class="nav-btn-secondary">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -45,7 +45,7 @@
                 <div class="pl-step-num">1</div>
                 <div class="pl-step-text">
                     <strong>optimized.json</strong>
-                    <span>скачайте в оптимизаторе</span>
+                    <span>download from optimizer</span>
                 </div>
             </div>
             <div class="pl-step-arrow">→</div>
@@ -53,15 +53,15 @@
                 <div class="pl-step-num">2</div>
                 <div class="pl-step-text">
                     <strong>assets.zip</strong>
-                    <span>скачайте в оптимизаторе</span>
+                    <span>download from optimizer</span>
                 </div>
             </div>
             <div class="pl-step-arrow">→</div>
             <div class="pl-step">
                 <div class="pl-step-num">3</div>
                 <div class="pl-step-text">
-                    <strong>Воспроизвести</strong>
-                    <span>смотрите анимацию</span>
+                    <strong>Play</strong>
+                    <span>watch the animation</span>
                 </div>
             </div>
         </div>
@@ -71,13 +71,13 @@
         <input type="file" id="zipInput" accept=".zip" hidden>
         <div class="pl-zones">
             <div class="pl-zone" id="zoneJson">
-                <span class="pl-zone-label">JSON файл</span>
+                <span class="pl-zone-label">JSON file</span>
                 <span class="pl-zone-hint" id="jsonHint">optimized.json</span>
                 <span class="pl-zone-size" id="jsonSize" style="display:none"></span>
             </div>
             <div class="pl-zone-divider"></div>
             <div class="pl-zone" id="zoneZip">
-                <span class="pl-zone-label">ZIP архив</span>
+                <span class="pl-zone-label">ZIP archive</span>
                 <span class="pl-zone-hint" id="zipHint">assets.zip</span>
                 <span class="pl-zone-size" id="zipSize" style="display:none"></span>
             </div>
@@ -86,7 +86,7 @@
         <div class="pl-footer">
             <button class="pl-play-btn" id="btnPlay" disabled>
                 <span class="pl-play-icon">▶</span>
-                <span>Воспроизвести</span>
+                <span>Play</span>
             </button>
             <div class="pl-footer-mid">
                 <div class="progressBarTrack">
@@ -102,7 +102,7 @@
                 <div id="player"></div>
                 <div class="pl-placeholder" id="playerPlaceholder">
                     <span class="pl-placeholder-icon">▶</span>
-                    <span class="pl-placeholder-text">Загрузи файлы и нажми воспроизвести</span>
+                    <span class="pl-placeholder-text">Load files and press Play</span>
                 </div>
             </div>
             <div class="pl-controls" id="playerControls" style="display:none">
@@ -111,10 +111,10 @@
                     <input type="range" class="pl-scrubber" id="scrubber" min="0" max="100" value="0" step="1">
                 </div>
                 <div class="pl-ctrl-row">
-                    <button class="pl-ctrl-btn pl-ctrl-stop" id="btnStop" title="В начало">■</button>
+                    <button class="pl-ctrl-btn pl-ctrl-stop" id="btnStop" title="To start">■</button>
                     <button class="pl-ctrl-btn pl-ctrl-playpause" id="btnPause">⏸</button>
                     <div class="pl-ctrl-gap"></div>
-                    <select class="pl-speed-sel" id="speedSelect" title="Скорость воспроизведения">
+                    <select class="pl-speed-sel" id="speedSelect" title="Playback speed">
                         <option value="0.5">0.5×</option>
                         <option value="1" selected>1×</option>
                         <option value="1.5">1.5×</option>
