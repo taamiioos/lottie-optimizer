@@ -1,23 +1,30 @@
+// Перематывает видео на заданное время и дожидается окончания перемотки
 const _seekTo = (video, time) => new Promise(res => {
-    if (Math.abs(video.currentTime - time) < 0.001) { res(); return; }
-    const done = () => { video.removeEventListener('seeked', done); res(); };
+    if (Math.abs(video.currentTime - time) < 0.001) {
+        res();
+        return;
+    }
+    const done = () => {
+        video.removeEventListener('seeked', done);
+        res();
+    };
     video.addEventListener('seeked', done);
     video.currentTime = time;
 });
-
+// Превращает canvas в Blob
 const _canvasToBlob = (canvas, quality) => {
     if (canvas.convertToBlob) return canvas.convertToBlob({type: 'image/webp', quality});
     return new Promise(r => canvas.toBlob(r, 'image/webp', quality));
 };
-
+// Извлекает кадры из видео через WebCodecs
 const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onProgress) => {
-    const arrayBuf = await videoFile.arrayBuffer();
-
+    const FEED_CHUNK = 8 * 1024 * 1024;
+    const MAX_QUEUE = 24;
+    // демультиплексируем MP4 с помощью MP4Box, получаем сэмплы и настройки
     const {samples, trackInfo, description} = await new Promise((resolve, reject) => {
         const mp4file = MP4Box.createFile();
         const collected = [];
         let info = null, desc = null;
-
         mp4file.onReady = (mp4info) => {
             const track = mp4info.videoTracks[0];
             if (!track) return reject(new Error('No video track'));
@@ -34,83 +41,93 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
             mp4file.setExtractionOptions(track.id, null, {nbSamples: Infinity});
             mp4file.start();
         };
-
         mp4file.onSamples = (id, user, batch) => {
-            collected.push(...batch);
-            if (collected.length >= info.nb_samples) {
-                resolve({samples: collected, trackInfo: info, description: desc});
-            }
+            for (let i = 0; i < batch.length; i++) collected.push(batch[i]);
         };
-
         mp4file.onError = (e) => reject(new Error('MP4Box: ' + e));
-
-        const buf = arrayBuf;
-        buf.fileStart = 0;
-        mp4file.appendBuffer(buf);
-        mp4file.flush();
+        (async () => {
+            let offset = 0;
+            while (offset < videoFile.size) {
+                const end = Math.min(offset + FEED_CHUNK, videoFile.size);
+                const buf = await videoFile.slice(offset, end).arrayBuffer();
+                buf.fileStart = offset;
+                offset = end;
+                mp4file.appendBuffer(buf);
+                await new Promise(r => setTimeout(r, 0)); // yield
+            }
+            mp4file.flush();
+            if (!info) return reject(new Error('No video track found'));
+            resolve({samples: collected, trackInfo: info, description: desc});
+        })().catch(reject);
     });
-
-    const duration = trackInfo.duration / trackInfo.timescale;
     const w = trackInfo.video.width, h = trackInfo.video.height;
+    let duration = trackInfo.duration / trackInfo.timescale;
+    if (!duration && samples.length > 0) {
+        const last = samples[samples.length - 1];
+        duration = (last.cts + last.duration) / last.timescale;
+    }
+    if (!duration) throw new Error('Cannot determine video duration');
     const total = Math.min(Math.ceil(duration * fps), maxFrames);
-
+    if (total <= 0) throw new Error('No frames to extract');
     let hwAccel = 'prefer-software';
-    try {
-        const sup = await VideoDecoder.isConfigSupported({
-            codec: trackInfo.codec, codedWidth: w, codedHeight: h,
-            hardwareAcceleration: 'prefer-hardware'
-        });
-        if (sup.supported) hwAccel = 'prefer-hardware';
-    } catch {}
-
-    const frameCanvases = [];
+    const sup = await VideoDecoder.isConfigSupported({
+        codec: trackInfo.codec, codedWidth: w, codedHeight: h,
+        hardwareAcceleration: 'prefer-hardware'
+    });
+    if (sup.supported) hwAccel = 'prefer-hardware';
+    const frames = new Array(total);
     let nextTarget = 0;
-
+    let totalFrameSize = 0;
+    const pendingBlobs = [];
+    // Запускаем декодер
     await new Promise((resolve, reject) => {
         const decoder = new VideoDecoder({
             output: (frame) => {
                 const ts = frame.timestamp / 1_000_000;
                 while (nextTarget < total && ts >= nextTarget / fps) {
+                    const idx = nextTarget;
                     const fc = new OffscreenCanvas(w, h);
                     fc.getContext('2d').drawImage(frame, 0, 0);
-                    frameCanvases.push(fc);
-                    onProgress(frameCanvases.length, total, 'extract');
+                    // blob сразу — не держим canvas в памяти
+                    const p = _canvasToBlob(fc, quality).then(blob => {
+                        frames[idx] = blob;
+                        totalFrameSize += blob.size;
+                        onProgress(pendingBlobs.length, total, 'extract');
+                    });
+                    pendingBlobs.push(p);
                     nextTarget++;
                 }
                 frame.close();
             },
             error: (e) => reject(new Error('VideoDecoder: ' + e.message))
         });
-
         decoder.configure({
-            codec: trackInfo.codec,
-            codedWidth: w,
-            codedHeight: h,
+            codec: trackInfo.codec, codedWidth: w, codedHeight: h,
             description: description || undefined,
             hardwareAcceleration: hwAccel
         });
-
-        for (const sample of samples) {
-            decoder.decode(new EncodedVideoChunk({
-                type: sample.is_sync ? 'key' : 'delta',
-                timestamp: sample.cts * 1_000_000 / sample.timescale,
-                duration: sample.duration * 1_000_000 / sample.timescale,
-                data: sample.data
-            }));
-        }
-
-        decoder.flush().then(() => { decoder.close(); resolve(); }).catch(reject);
+        (async () => {
+            for (const sample of samples) {
+                while (decoder.decodeQueueSize >= MAX_QUEUE) {
+                    await new Promise(r => setTimeout(r, 4));
+                }
+                decoder.decode(new EncodedVideoChunk({
+                    type: sample.is_sync ? 'key' : 'delta',
+                    timestamp: sample.cts * 1_000_000 / sample.timescale,
+                    duration: sample.duration * 1_000_000 / sample.timescale,
+                    data: sample.data
+                }));
+            }
+            await decoder.flush();
+            decoder.close();
+            await Promise.all(pendingBlobs);
+            resolve();
+        })().catch(reject);
     });
-
-    let totalFrameSize = 0;
-    const frames = await Promise.all(frameCanvases.map(async (fc) => {
-        const blob = await _canvasToBlob(fc, quality);
-        totalFrameSize += blob.size;
-        return blob;
-    }));
-
-    return {frames, width: w, height: h, duration, fps, total: frameCanvases.length, totalFrameSize};
+    const result = frames.filter(Boolean);
+    return {frames: result, width: w, height: h, duration, fps, total: result.length, totalFrameSize};
 };
+// Запасной вариант: извлечение кадров через перемотку <video>
 const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgress) => {
     const video = document.createElement('video');
     video.muted = true;
@@ -122,13 +139,10 @@ const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgre
         video.onloadedmetadata = res;
         video.onerror = () => rej(new Error('Browser could not load video'));
     });
-
     const {videoWidth: w, videoHeight: h, duration} = video;
     if (!w || !h) throw new Error('Video has no video track');
-
     const total = Math.min(Math.ceil(duration * fps), maxFrames);
     const frameCanvases = [];
-
     for (let i = 0; i < total; i++) {
         await _seekTo(video, i / fps);
         if (typeof OffscreenCanvas !== 'undefined') {
@@ -137,27 +151,24 @@ const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgre
             frameCanvases.push(fc);
         } else {
             const fc = document.createElement('canvas');
-            fc.width = w; fc.height = h;
+            fc.width = w;
+            fc.height = h;
             fc.getContext('2d').drawImage(video, 0, 0);
             frameCanvases.push(fc);
         }
         onProgress(i + 1, total, 'extract');
-        // yield каждые 10 кадров — браузер успевает обновить прогресс-бар
         if (i % 10 === 9) await new Promise(r => setTimeout(r, 0));
     }
-
     URL.revokeObjectURL(url);
-
     let totalFrameSize = 0;
     const frames = await Promise.all(frameCanvases.map(async (fc) => {
         const blob = await _canvasToBlob(fc, quality);
         totalFrameSize += blob.size;
         return blob;
     }));
-
     return {frames, width: w, height: h, duration, fps, total, totalFrameSize};
 };
-
+// Главная функция извлечения: пробуем WebCodecs, если не получилось – через видеоплеер
 const _extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) => {
     if ('VideoDecoder' in window && typeof MP4Box !== 'undefined') {
         try {
@@ -167,15 +178,12 @@ const _extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) =>
             console.warn('[VideoToLottie] WebCodecs path failed, falling back to seeked:', err.message);
         }
     }
-    // Фоллбэк для старых браузеров
     return await _extractFramesSeeked(videoFile, fps, maxFrames, quality, onProgress);
 };
-
+// Собирает JSON Lottie из Blob кадров
 const _buildLottieJson = async (frames, width, height, fps, name, onProgress) => {
-    // FileReader асинхронный — читаем батчами по 20 штук и отдаём управление между ними
     const BATCH = 20;
     const dataUrls = new Array(frames.length);
-
     for (let i = 0; i < frames.length; i += BATCH) {
         const end = Math.min(i + BATCH, frames.length);
         const batch = frames.slice(i, end);
@@ -184,12 +192,12 @@ const _buildLottieJson = async (frames, width, height, fps, name, onProgress) =>
             fr.onload = () => r(fr.result);
             fr.readAsDataURL(blob);
         })));
-        results.forEach((r, j) => { dataUrls[i + j] = r; });
+        results.forEach((r, j) => {
+            dataUrls[i + j] = r;
+        });
         onProgress(end, frames.length, 'build');
-        // yield после каждого батча — страница не замерзает на больших видео
         await new Promise(r => setTimeout(r, 0));
     }
-
     const assets = dataUrls.map((p, i) => ({id: `frame_${i}`, w: width, h: height, p, u: '', e: 1}));
     const layers = dataUrls.map((_, i) => ({
         ty: 2, refId: `frame_${i}`, nm: `frame_${i}`, ind: i + 1,
@@ -201,48 +209,80 @@ const _buildLottieJson = async (frames, width, height, fps, name, onProgress) =>
             s: {a: 0, k: [100, 100, 100]}
         }
     }));
-
     return {v: '5.7.4', fr: fps, ip: 0, op: frames.length, w: width, h: height, nm: name, ddd: 0, assets, layers};
 };
-
-const convertVideoToLottie = async (videoFile, {fps = 24, maxFrames = 150, quality = 0.85, onProgress = () => {}} = {}) => {
+// Основная функция: видео в Lottie
+const convertVideoToLottie = async (videoFile, {
+    fps = 24, maxFrames = 150, quality = 0.85, onProgress = () => {
+    }
+} = {}) => {
     const name = videoFile.name.replace(/\.[^.]+$/, '');
-
     const frameData = await _extractFrames(videoFile, fps, maxFrames, quality, (cur, total) => {
-        onProgress({phase: 'extract', message: `Extracting frames: ${cur} / ${total}`, current: cur, total, percent: Math.round(cur / total * 50)});
+        onProgress({
+            phase: 'extract',
+            message: `Extracting frames: ${cur} / ${total}`,
+            current: cur,
+            total,
+            percent: Math.round(cur / total * 50)
+        });
     });
-    onProgress({phase: 'build', message: 'Building Lottie JSON...', current: 0, total: frameData.frames.length, percent: 50});
-
+    onProgress({
+        phase: 'build',
+        message: 'Building Lottie JSON...',
+        current: 0,
+        total: frameData.frames.length,
+        percent: 50
+    });
     const json = await _buildLottieJson(frameData.frames, frameData.width, frameData.height, fps, name, (cur, total) => {
-        onProgress({phase: 'build', message: `Encoding: ${cur} / ${total}`, current: cur, total, percent: 50 + Math.round(cur / total * 50)});
+        onProgress({
+            phase: 'build',
+            message: `Encoding: ${cur} / ${total}`,
+            current: cur,
+            total,
+            percent: 50 + Math.round(cur / total * 50)
+        });
     });
-
-    return {json, frameStats: {count: frameData.total, totalFrameSize: frameData.totalFrameSize, width: frameData.width, height: frameData.height, duration: frameData.duration, fps}};
+    return {
+        json,
+        frameStats: {
+            count: frameData.total,
+            totalFrameSize: frameData.totalFrameSize,
+            width: frameData.width,
+            height: frameData.height,
+            duration: frameData.duration,
+            fps
+        }
+    };
 };
-
-const formatSize = (b) => { if (!b) return '0 B'; const k = 1024, s = ['B','KB','MB','GB']; const i = Math.floor(Math.log(b)/Math.log(k)); return parseFloat((b/Math.pow(k,i)).toFixed(2))+' '+s[i]; };
-
+// Вспомогательные UI-функции
+const formatSize = (b) => {
+    if (!b) return '0 B';
+    const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(b) / Math.log(k));
+    return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];
+};
 const $ = id => document.getElementById(id);
-
 const fmtTime = (sec) => {
     const m = Math.floor(sec / 60), s = (sec % 60).toFixed(1);
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
 };
-
 const syncSlider = (rangeId, valId, decimals = 0) => {
     const range = $(rangeId), val = $(valId);
-    range.oninput = () => { val.textContent = parseFloat(range.value).toFixed(decimals); updateEstimate(); };
+    range.oninput = () => {
+        val.textContent = parseFloat(range.value).toFixed(decimals);
+        updateEstimate();
+    };
 };
 syncSlider('fpsRange', 'fpsVal');
 $('fpsVal').textContent = '30';
 syncSlider('maxFramesRange', 'maxFramesVal');
 syncSlider('qualityRange', 'qualityVal', 2);
-
+// UI-логика страницы
 const uploadArea = $('uploadArea');
-const fileInput  = $('fileInput');
-let resultJson   = null;
-let currentFile  = null;
-let probe        = null;
+const fileInput = $('fileInput');
+let resultJson = null;
+let currentFile = null;
+let probe = null;
 
 const updateEstimate = () => {
     if (!probe || !currentFile) return;
@@ -252,46 +292,47 @@ const updateEstimate = () => {
     $('infoEst').textContent = est + ' кадр(ов)';
 };
 
-uploadArea.onclick     = () => fileInput.click();
-uploadArea.ondragover  = (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); };
+uploadArea.onclick = () => fileInput.click();
+uploadArea.ondragover = (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('dragover');
+};
 uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
 uploadArea.ondrop = (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     uploadArea.classList.remove('dragover');
     const f = e.dataTransfer.files[0];
     if (f && f.type.startsWith('video/')) onFile(f);
 };
-fileInput.onchange = (e) => { if (e.target.files[0]) onFile(e.target.files[0]); e.target.value = ''; };
+fileInput.onchange = (e) => {
+    if (e.target.files[0]) onFile(e.target.files[0]);
+    e.target.value = '';
+};
 
 const onFile = (file) => {
     currentFile = file;
-    resultJson  = null;
-
-    // один video элемент переиспользуется для всех файлов — не создаём новый каждый раз
+    resultJson = null;
     if (!probe) {
         probe = document.createElement('video');
         probe.muted = true;
         probe.style.display = 'none';
         document.body.appendChild(probe);
     }
-
     const url = URL.createObjectURL(file);
     probe.src = url;
     probe.onloadedmetadata = () => {
         URL.revokeObjectURL(url);
         const fps = parseInt($('fpsRange').value);
-
         $('infoName').textContent = file.name;
-        $('infoRes').textContent  = `${probe.videoWidth}×${probe.videoHeight}`;
-        $('infoDur').textContent  = fmtTime(probe.duration);
-        $('infoEst').textContent  = Math.ceil(probe.duration * fps) + ' frame(s)';
-        $('mainCard').hidden      = false;
-        $('resultBlock').hidden   = true;
-        // сбрасываем прогресс-бар
+        $('infoRes').textContent = `${probe.videoWidth}×${probe.videoHeight}`;
+        $('infoDur').textContent = fmtTime(probe.duration);
+        $('infoEst').textContent = Math.ceil(probe.duration * fps) + ' frame(s)';
+        $('mainCard').hidden = false;
+        $('resultBlock').hidden = true;
         $('progressFill').style.width = '0%';
-        $('progressFill').className   = 'progressBarFill';
+        $('progressFill').className = 'progressBarFill';
         $('progressText').textContent = '';
-
         uploadArea.querySelector('.uploadText').innerHTML = `<strong>${file.name}</strong> loaded`;
     };
     probe.onerror = () => {
@@ -301,26 +342,22 @@ const onFile = (file) => {
 
     $('convertBtn').onclick = () => startConvert(file);
 };
-
+// старт конвертации
 const startConvert = async (file) => {
-    const fps       = parseInt($('fpsRange').value);
+    const fps = parseInt($('fpsRange').value);
     const maxFrames = parseInt($('maxFramesRange').value);
-    const quality   = parseFloat($('qualityRange').value);
-
+    const quality = parseFloat($('qualityRange').value);
     $('resultBlock').hidden = true;
-
-    // блокируем управление на время конвертации
     const controls = [$('convertBtn'), $('resetSettingsBtn'), $('fpsRange'), $('maxFramesRange'), $('qualityRange')];
-    controls.forEach(el => { el.disabled = true; });
-
+    controls.forEach(el => {
+        el.disabled = true;
+    });
     const bar = $('progressFill');
     const txt = $('progressText');
     bar.style.width = '0%';
-    bar.className   = 'progressBarFill';
+    bar.className = 'progressBarFill';
     txt.textContent = '';
-
     const t0 = performance.now();
-
     try {
         const {json, frameStats} = await convertVideoToLottie(file, {
             fps, maxFrames, quality,
@@ -329,7 +366,6 @@ const startConvert = async (file) => {
                 txt.textContent = message;
             }
         });
-
         const elapsed = performance.now() - t0;
         bar.style.width = '100%';
         bar.classList.add('done');
@@ -337,57 +373,82 @@ const startConvert = async (file) => {
         resultJson = json;
         showResult(json, frameStats, elapsed);
     } catch (err) {
-        bar.className   = 'progressBarFill error';
+        bar.className = 'progressBarFill error';
         txt.textContent = 'Error: ' + err.message;
         console.error(err);
     } finally {
-        // разблокируем управление
-        controls.forEach(el => { el.disabled = false; });
+        controls.forEach(el => {
+            el.disabled = false;
+        });
     }
 };
-
+// Собирает JSON в Blob
+const _buildJsonBlob = (json) => {
+    const skeleton = JSON.stringify({...json, assets: undefined, layers: undefined}).slice(0, -1);
+    const parts = [skeleton + ',"assets":['];
+    for (let i = 0; i < json.assets.length; i++) {
+        if (i > 0) parts.push(',');
+        parts.push(JSON.stringify(json.assets[i]));
+    }
+    parts.push('],"layers":[');
+    for (let i = 0; i < json.layers.length; i++) {
+        if (i > 0) parts.push(',');
+        parts.push(JSON.stringify(json.layers[i]));
+    }
+    parts.push(']}');
+    return new Blob(parts, {type: 'application/json'});
+};
+// Показывает результат: статистику, кнопку скачать, превью
 const showResult = (json, frameStats, elapsed = 0) => {
     $('resultBlock').hidden = false;
-
-    const jsonStr   = JSON.stringify(json);
-    const jsonBytes = new Blob([jsonStr]).size;
-    const rawBytes  = frameStats?.totalFrameSize || 0;
-
+    const estBytes = (json.assets || []).reduce((s, a) => s + (a.p ? Math.round(a.p.length * 0.75) : 0), 0);
     $('resFrames').textContent = frameStats?.count ?? json.op;
-    $('resTime').textContent   = fmtTime(elapsed / 1000);
-    $('resFps').textContent    = (frameStats?.fps ?? json.fr) + ' fps';
-    $('resRes').textContent    = `${frameStats?.width ?? json.w}×${frameStats?.height ?? json.h}`;
-    $('resSize').textContent   = rawBytes > 0
-        ? `${formatSize(jsonBytes)}`
-        : formatSize(jsonBytes);
-
+    $('resTime').textContent = fmtTime(elapsed / 1000);
+    $('resFps').textContent = (frameStats?.fps ?? json.fr) + ' fps';
+    $('resRes').textContent = `${frameStats?.width ?? json.w}×${frameStats?.height ?? json.h}`;
+    $('resSize').textContent = formatSize(estBytes || frameStats?.totalFrameSize || 0);
     $('downloadBtn').onclick = () => {
-        const blob = new Blob([jsonStr], {type: 'application/json'});
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url; a.download = (json.nm || 'animation') + '.lottie.json'; a.click();
-        URL.revokeObjectURL(url);
+        try {
+            const blob = _buildJsonBlob(json);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (json.nm || 'animation') + '.lottie_test.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert('Download failed: ' + e.message);
+        }
     };
-
     const box = $('previewBox');
     box.innerHTML = '';
     try {
-        lottie.loadAnimation({container: box, renderer: 'canvas', loop: true, autoplay: true, animationData: json, assetsPath: ''});
-    } catch { box.textContent = 'Preview not available'; }
+        lottie.loadAnimation({
+            container: box,
+            renderer: 'canvas',
+            loop: true,
+            autoplay: true,
+            animationData: json,
+            assetsPath: ''
+        });
+    } catch {
+        box.textContent = 'Preview not available';
+    }
 };
-
+// Сброс всего состояния
 const resetTool = () => {
     currentFile = null;
-    resultJson  = null;
+    resultJson = null;
     $('resultBlock').hidden = true;
-    $('mainCard').hidden    = true;
-    // сбрасываем прогресс-бар и кнопки
+    $('mainCard').hidden = true;
     $('progressFill').style.width = '0%';
-    $('progressFill').className   = 'progressBarFill';
+    $('progressFill').className = 'progressBarFill';
     $('progressText').textContent = '';
     [$('convertBtn'), $('resetSettingsBtn'), $('fpsRange'), $('maxFramesRange'), $('qualityRange')]
-        .forEach(el => { el.disabled = false; });
+        .forEach(el => {
+            el.disabled = false;
+        });
     uploadArea.querySelector('.uploadText').textContent = 'Drop video here or click to upload';
 };
-$('resetBtn').onclick         = resetTool;
+$('resetBtn').onclick = resetTool;
 $('resetSettingsBtn').onclick = resetTool;

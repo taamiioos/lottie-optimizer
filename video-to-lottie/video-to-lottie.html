@@ -4,18 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video to Lottie</title>
-    <link rel="stylesheet" href="../demo/styles/common.css">
+    <link rel="stylesheet" href="../demo/common/common.css">
     <link rel="stylesheet" href="video-to-lottie.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="https://unpkg.com/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
     <script type="module" src="video-to-lottie-main.js"></script>
+    <script type="module">
+        import {initTheme, toggleTheme} from '../demo/common/common.js';
+
+        initTheme();
+        window.__toggleTheme = toggleTheme;
+    </script>
 </head>
 <body>
 <main class="app vtl-app">
     <header class="app-header">
         <div class="app-header-brand">
             <div class="app-logo">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="6" width="15" height="12" rx="2"/>
                     <path d="M17 9l5-3v12l-5-3"/>
                 </svg>
@@ -25,20 +32,33 @@
             </div>
         </div>
         <div class="app-header-nav">
-            <a href="../demo/optimizer.html" class="nav-btn-secondary">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+            <a href="../demo/optimizer-app/optimizer.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/>
+                </svg>
                 Lottie Optimizer
             </a>
-            <a href="../demo/player.html" class="nav-btn-secondary">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+            <a href="../demo/player-app/player.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+                </svg>
                 Lottie Player
             </a>
+            <button class="theme-toggle" id="themeToggle" title="Toggle theme"
+                    onclick="window.__toggleTheme && window.__toggleTheme()"></button>
         </div>
     </header>
 
     <div id="uploadArea" class="uploadArea">
         <div class="uploadIcon">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 16 12 12 8 16"/>
+                <line x1="12" y1="12" x2="12" y2="21"/>
+                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+            </svg>
         </div>
         <div class="uploadText">Drop video here or click to upload</div>
         <input type="file" id="fileInput" accept="video/*" hidden>
@@ -46,10 +66,22 @@
 
     <div id="mainCard" class="vtl-card vtl-main-card" hidden>
         <div class="statsGrid">
-            <div class="statBox"><div class="statLabel">File</div><div id="infoName" class="statValue vtl-stat-sm">—</div></div>
-            <div class="statBox"><div class="statLabel">Resolution</div><div id="infoRes" class="statValue vtl-stat-sm">—</div></div>
-            <div class="statBox"><div class="statLabel">Duration</div><div id="infoDur" class="statValue vtl-stat-sm">—</div></div>
-            <div class="statBox"><div class="statLabel">Frames</div><div id="infoEst" class="statValue vtl-stat-sm">—</div></div>
+            <div class="statBox">
+                <div class="statLabel">File</div>
+                <div id="infoName" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Resolution</div>
+                <div id="infoRes" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Duration</div>
+                <div id="infoDur" class="statValue vtl-stat-sm">—</div>
+            </div>
+            <div class="statBox">
+                <div class="statLabel">Frames</div>
+                <div id="infoEst" class="statValue vtl-stat-sm">—</div>
+            </div>
         </div>
         <div class="vtl-divider"></div>
         <div class="slotSettingRow">
@@ -59,7 +91,7 @@
         </div>
         <div class="slotSettingRow">
             <label class="vtl-setting-label">Max frames</label>
-            <input type="range" id="maxFramesRange" min="50" max="500" step="50" value="300" class="slotRange">
+            <input type="range" id="maxFramesRange" min="50" max="10000" step="50" value="300" class="slotRange">
             <span id="maxFramesVal" class="slotRangeVal">300</span>
         </div>
         <div class="slotSettingRow">
@@ -70,7 +102,12 @@
         <div class="vtl-footer">
             <div class="vtl-footer-btns">
                 <button id="convertBtn" class="dlBtn">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 16 12 12 8 16"/>
+                        <line x1="12" y1="12" x2="12" y2="21"/>
+                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+                    </svg>
                     Convert
                 </button>
                 <button id="resetSettingsBtn" class="tool-reset-btn">Different file</button>
@@ -110,11 +147,18 @@
         <p id="resWarning" class="vtl-warning" hidden></p>
         <div class="vtl-btns">
             <button id="downloadBtn" class="dlBtn">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
                 Download JSON
             </button>
-            <a href="../demo/optimizer.html" class="nav-btn-secondary">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+            <a href="../demo/optimizer-app/optimizer.html" class="nav-btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/>
+                </svg>
                 Optimize
             </a>
             <button id="resetBtn" class="tool-reset-btn">

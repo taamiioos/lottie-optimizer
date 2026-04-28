@@ -118,3 +118,27 @@
     height: 100% !important;
     object-fit: contain;
 }
+
+body.light .vtl-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+body.light .vtl-divider {
+    background: #e2e8f0;
+}
+
+body.light .vtl-footer-progress .progressBarTrack {
+    background: #e2e8f0;
+}
+
+body.light .vtl-warning {
+    background: #fffbeb;
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+body.light .vtl-preview {
+    background: #f0f2f8;
+    border-color: #e2e8f0;
+}
