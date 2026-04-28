@@ -94,7 +94,7 @@ const initSlot = async (slotId, data, fileSize, name) => {
     }
     let animBefore = null;
     try {
-        animBefore = createAnim(beforeEl, data);
+        animBefore = createAnim(beforeEl, structuredClone(data));
     } catch (e) {
         console.error(`[${p}] Не удалось отрендерить оригинал:`, e);
     }
