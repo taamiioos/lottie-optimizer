@@ -11,9 +11,8 @@
     <script type="module" src="video-to-lottie-main.js"></script>
     <script type="module">
         import {initTheme, toggleTheme} from '../demo/common/common.js';
-
         initTheme();
-        window.__toggleTheme = toggleTheme;
+        window['toggleTheme'] = toggleTheme;
     </script>
 </head>
 <body>
@@ -47,7 +46,7 @@
                 Lottie Player
             </a>
             <button class="theme-toggle" id="themeToggle" title="Toggle theme"
-                    onclick="window.__toggleTheme && window.__toggleTheme()"></button>
+                    onclick="window.toggleTheme && window.toggleTheme()"></button>
         </div>
     </header>
 

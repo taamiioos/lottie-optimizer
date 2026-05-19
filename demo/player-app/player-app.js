@@ -88,8 +88,6 @@ $('btnPlay').addEventListener('click', async () => {
     $('btnPlay').innerHTML = '<span>Loading...</span>';
     $('progressFill').classList.remove('done', 'error');
     const t0 = performance.now();
-    let videoConversionStart = null;
-    let videoConversionTime = 0;
     if (state.anim) {
         state.anim.destroy();
         state.anim = null;
@@ -116,9 +114,6 @@ $('btnPlay').addEventListener('click', async () => {
         setProgress(50, 'Loading...');
         animationData = state.json;
     }
-    if (lottie.setVideoModeThreshold) {
-        lottie.setVideoModeThreshold(40);
-    }
     state.anim = lottie.loadAnimation({
         container: $('player'),
         renderer: 'canvas',
@@ -129,30 +124,14 @@ $('btnPlay').addEventListener('click', async () => {
 
     state.anim.addEventListener('DOMLoaded', () => {
         const initialLoadTime = performance.now() - t0;
-        if (state.anim._isVideoMode && state.anim._recordToVideoPromise) {
-            videoConversionStart = performance.now();
-        }
         $('progressFill').classList.add('done');
         setProgress(100, fmtTime(initialLoadTime));
         renderStats({
             initialLoadTime: initialLoadTime,
-            videoConversionTime: 0,
             animData: state.anim.animationData,
-            isVideoMode: !!state.anim._isVideoMode
         });
 
         setupControls(state.anim);
-    });
-    state.anim.addEventListener('videoReady', (e) => {
-        if (videoConversionStart) {
-            videoConversionTime = performance.now() - videoConversionStart;
-            renderStats({
-                initialLoadTime: performance.now() - t0,
-                videoConversionTime: videoConversionTime,
-                animData: state.anim.animationData,
-                isVideoMode: true
-            });
-        }
     });
     state.anim.addEventListener('data_failed', () => {
         showError('Error loading animation');
@@ -264,13 +243,6 @@ const renderStats = (s) => {
              <div class="statValue">${fmtTime(s.initialLoadTime || 0)}</div>
            </div>`;
 
-    // Время конвертации в видео
-    if (s.videoConversionTime > 0) {
-        html += `<div class="statBox">
-               <div class="statLabel">Video Conversion</div>
-               <div class="statValue">${fmtTime(s.videoConversionTime)}</div>
-             </div>`;
-    }
     if (w > 0) {
         html += `<div class="statBox">
                <div class="statLabel">Size</div>

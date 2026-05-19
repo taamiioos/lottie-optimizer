@@ -4,8 +4,6 @@ import {ImageProcessor} from "./image.js";
 const VideoEncoderUtil = {
     /**
      * Кодирует массив кадров (data URL или Blob) в MP4/H.264 через WebCodecs
-     * @param {(string|Blob)[]} frames — массив кадров
-     * @param {EncodeOptions}   [options] — fps, качество, прогресс
      */
     async encode(frames, options = {}) {
         const {
@@ -186,18 +184,20 @@ const VideoEncoderUtil = {
     _muxToMP4(chunks, {width, height, timescale, sampleDuration, encoderConfig}) {
         const mp4file = MP4Box.createFile();
         const description = this._toArrayBuffer(encoderConfig.description);
+        // Сортируем чанки по timestamp для гарантии правильного порядка
+        const sorted = chunks.slice().sort((a, b) => a.timestamp - b.timestamp);
         // Добавляем видеодорожку с конфигурацией H.264
         const trackId = mp4file.addTrack({
             timescale, width, height,
-            nb_samples: chunks.length,
+            nb_samples: sorted.length,
             brands: ['isom', 'iso2', 'avc1', 'mp41'],
             avcDecoderConfigRecord: description,
         });
         // Добавляем каждый сэмпл
-        for (let i = 0; i < chunks.length; i++) {
-            mp4file.addSample(trackId, this._toArrayBuffer(chunks[i].data), {
+        for (let i = 0; i < sorted.length; i++) {
+            mp4file.addSample(trackId, this._toArrayBuffer(sorted[i].data), {
                 duration: sampleDuration,
-                is_sync: chunks[i].isKey,
+                is_sync: sorted[i].isKey,
                 cts: 0,
                 dts: i * sampleDuration,
             });

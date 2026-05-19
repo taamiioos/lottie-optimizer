@@ -1,5 +1,9 @@
-// Перематывает видео на заданное время и дожидается окончания перемотки
-const _seekTo = (video, time) => new Promise(res => {
+import {$, formatSize} from '../demo/common/common.js';
+
+/**
+ * Перематывает видео на заданное время и ждёт окончания перемотки
+ */
+const seekTo = (video, time) => new Promise((res) => {
     if (Math.abs(video.currentTime - time) < 0.001) {
         res();
         return;
@@ -11,16 +15,21 @@ const _seekTo = (video, time) => new Promise(res => {
     video.addEventListener('seeked', done);
     video.currentTime = time;
 });
-// Превращает canvas в Blob
-const _canvasToBlob = (canvas, quality) => {
+
+/**
+ * Конвертирует canvas в Blob (WebP)
+ */
+const canvasToBlob = (canvas, quality) => {
     if (canvas.convertToBlob) return canvas.convertToBlob({type: 'image/webp', quality});
-    return new Promise(r => canvas.toBlob(r, 'image/webp', quality));
+    return new Promise((r) => canvas.toBlob(r, 'image/webp', quality));
 };
-// Извлекает кадры из видео через WebCodecs
-const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onProgress) => {
+
+/**
+ * Извлекает кадры из видео через WebCodecs + MP4Box
+ */
+const extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onProgress) => {
     const FEED_CHUNK = 8 * 1024 * 1024;
     const MAX_QUEUE = 24;
-    // демультиплексируем MP4 с помощью MP4Box, получаем сэмплы и настройки
     const {samples, trackInfo, description} = await new Promise((resolve, reject) => {
         const mp4file = MP4Box.createFile();
         const collected = [];
@@ -53,7 +62,7 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
                 buf.fileStart = offset;
                 offset = end;
                 mp4file.appendBuffer(buf);
-                await new Promise(r => setTimeout(r, 0)); // yield
+                await new Promise((r) => setTimeout(r, 0));
             }
             mp4file.flush();
             if (!info) return reject(new Error('No video track found'));
@@ -79,7 +88,6 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
     let nextTarget = 0;
     let totalFrameSize = 0;
     const pendingBlobs = [];
-    // Запускаем декодер
     await new Promise((resolve, reject) => {
         const decoder = new VideoDecoder({
             output: (frame) => {
@@ -88,8 +96,7 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
                     const idx = nextTarget;
                     const fc = new OffscreenCanvas(w, h);
                     fc.getContext('2d').drawImage(frame, 0, 0);
-                    // blob сразу — не держим canvas в памяти
-                    const p = _canvasToBlob(fc, quality).then(blob => {
+                    const p = canvasToBlob(fc, quality).then((blob) => {
                         frames[idx] = blob;
                         totalFrameSize += blob.size;
                         onProgress(pendingBlobs.length, total, 'extract');
@@ -109,7 +116,7 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
         (async () => {
             for (const sample of samples) {
                 while (decoder.decodeQueueSize >= MAX_QUEUE) {
-                    await new Promise(r => setTimeout(r, 4));
+                    await new Promise((r) => setTimeout(r, 4));
                 }
                 decoder.decode(new EncodedVideoChunk({
                     type: sample.is_sync ? 'key' : 'delta',
@@ -127,8 +134,11 @@ const _extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onPro
     const result = frames.filter(Boolean);
     return {frames: result, width: w, height: h, duration, fps, total: result.length, totalFrameSize};
 };
-// Запасной вариант: извлечение кадров через перемотку <video>
-const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgress) => {
+
+/**
+ * Извлекает кадры через перемотку HTMLVideoElement
+ */
+const extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgress) => {
     const video = document.createElement('video');
     video.muted = true;
     video.playsInline = true;
@@ -144,7 +154,7 @@ const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgre
     const total = Math.min(Math.ceil(duration * fps), maxFrames);
     const frameCanvases = [];
     for (let i = 0; i < total; i++) {
-        await _seekTo(video, i / fps);
+        await seekTo(video, i / fps);
         if (typeof OffscreenCanvas !== 'undefined') {
             const fc = new OffscreenCanvas(w, h);
             fc.getContext('2d').drawImage(video, 0, 0);
@@ -157,37 +167,43 @@ const _extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgre
             frameCanvases.push(fc);
         }
         onProgress(i + 1, total, 'extract');
-        if (i % 10 === 9) await new Promise(r => setTimeout(r, 0));
+        if (i % 10 === 9) await new Promise((r) => setTimeout(r, 0));
     }
     URL.revokeObjectURL(url);
     let totalFrameSize = 0;
     const frames = await Promise.all(frameCanvases.map(async (fc) => {
-        const blob = await _canvasToBlob(fc, quality);
+        const blob = await canvasToBlob(fc, quality);
         totalFrameSize += blob.size;
         return blob;
     }));
     return {frames, width: w, height: h, duration, fps, total, totalFrameSize};
 };
-// Главная функция извлечения: пробуем WebCodecs, если не получилось – через видеоплеер
-const _extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) => {
+
+/**
+ * Извлекает кадры из видео
+ */
+const extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) => {
     if ('VideoDecoder' in window && typeof MP4Box !== 'undefined') {
         try {
             console.log('[VideoToLottie] Using WebCodecs + MP4Box (hardware/software decoding)');
-            return await _extractFramesWebCodecs(videoFile, fps, maxFrames, quality, onProgress);
+            return await extractFramesWebCodecs(videoFile, fps, maxFrames, quality, onProgress);
         } catch (err) {
             console.warn('[VideoToLottie] WebCodecs path failed, falling back to seeked:', err.message);
         }
     }
-    return await _extractFramesSeeked(videoFile, fps, maxFrames, quality, onProgress);
+    return await extractFramesSeeked(videoFile, fps, maxFrames, quality, onProgress);
 };
-// Собирает JSON Lottie из Blob кадров
-const _buildLottieJson = async (frames, width, height, fps, name, onProgress) => {
+
+/**
+ * Собирает JSON Lottie-анимации из массива Blob-кадров
+ */
+const buildLottieJson = async (frames, width, height, fps, name, onProgress) => {
     const BATCH = 20;
     const dataUrls = new Array(frames.length);
     for (let i = 0; i < frames.length; i += BATCH) {
         const end = Math.min(i + BATCH, frames.length);
         const batch = frames.slice(i, end);
-        const results = await Promise.all(batch.map(blob => new Promise(r => {
+        const results = await Promise.all(batch.map((blob) => new Promise((r) => {
             const fr = new FileReader();
             fr.onload = () => r(fr.result);
             fr.readAsDataURL(blob);
@@ -196,7 +212,7 @@ const _buildLottieJson = async (frames, width, height, fps, name, onProgress) =>
             dataUrls[i + j] = r;
         });
         onProgress(end, frames.length, 'build');
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise((r) => setTimeout(r, 0));
     }
     const assets = dataUrls.map((p, i) => ({id: `frame_${i}`, w: width, h: height, p, u: '', e: 1}));
     const layers = dataUrls.map((_, i) => ({
@@ -211,13 +227,15 @@ const _buildLottieJson = async (frames, width, height, fps, name, onProgress) =>
     }));
     return {v: '5.7.4', fr: fps, ip: 0, op: frames.length, w: width, h: height, nm: name, ddd: 0, assets, layers};
 };
-// Основная функция: видео в Lottie
+
+/**
+ * Конвертирует видеофайл в Lottie JSON
+ */
 const convertVideoToLottie = async (videoFile, {
-    fps = 24, maxFrames = 150, quality = 0.85, onProgress = () => {
-    }
+    fps = 24, maxFrames = 150, quality = 0.85, onProgress = () => {}
 } = {}) => {
     const name = videoFile.name.replace(/\.[^.]+$/, '');
-    const frameData = await _extractFrames(videoFile, fps, maxFrames, quality, (cur, total) => {
+    const frameData = await extractFrames(videoFile, fps, maxFrames, quality, (cur, total) => {
         onProgress({
             phase: 'extract',
             message: `Extracting frames: ${cur} / ${total}`,
@@ -233,7 +251,7 @@ const convertVideoToLottie = async (videoFile, {
         total: frameData.frames.length,
         percent: 50
     });
-    const json = await _buildLottieJson(frameData.frames, frameData.width, frameData.height, fps, name, (cur, total) => {
+    const json = await buildLottieJson(frameData.frames, frameData.width, frameData.height, fps, name, (cur, total) => {
         onProgress({
             phase: 'build',
             message: `Encoding: ${cur} / ${total}`,
@@ -254,36 +272,38 @@ const convertVideoToLottie = async (videoFile, {
         }
     };
 };
-// Вспомогательные UI-функции
-const formatSize = (b) => {
-    if (!b) return '0 B';
-    const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(b) / Math.log(k));
-    return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];
-};
-const $ = id => document.getElementById(id);
-const fmtTime = (sec) => {
+
+/**
+ * Форматирует секунды в читаемую строку
+ */
+const fmtTimeSec = (sec) => {
     const m = Math.floor(sec / 60), s = (sec % 60).toFixed(1);
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
 };
+
+/**
+ * Привязывает слайдер к отображению значения и вызывает updateEstimate при изменении
+ */
 const syncSlider = (rangeId, valId, decimals = 0) => {
     const range = $(rangeId), val = $(valId);
-    range.oninput = () => {
+    range.addEventListener('input', () => {
         val.textContent = parseFloat(range.value).toFixed(decimals);
         updateEstimate();
-    };
+    });
 };
+
 syncSlider('fpsRange', 'fpsVal');
 $('fpsVal').textContent = '30';
 syncSlider('maxFramesRange', 'maxFramesVal');
 syncSlider('qualityRange', 'qualityVal', 2);
-// UI-логика страницы
+
 const uploadArea = $('uploadArea');
 const fileInput = $('fileInput');
 let resultJson = null;
 let currentFile = null;
 let probe = null;
 
+/** Обновляет расчётное количество кадров по текущим настройкам */
 const updateEstimate = () => {
     if (!probe || !currentFile) return;
     const fps = parseInt($('fpsRange').value);
@@ -292,24 +312,27 @@ const updateEstimate = () => {
     $('infoEst').textContent = est + ' кадр(ов)';
 };
 
-uploadArea.onclick = () => fileInput.click();
-uploadArea.ondragover = (e) => {
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', (e) => {
     e.preventDefault();
     uploadArea.classList.add('dragover');
-};
-uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
-uploadArea.ondrop = (e) => {
+});
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', (e) => {
     e.preventDefault();
     e.stopPropagation();
     uploadArea.classList.remove('dragover');
     const f = e.dataTransfer.files[0];
     if (f && f.type.startsWith('video/')) onFile(f);
-};
-fileInput.onchange = (e) => {
+});
+fileInput.addEventListener('change', (e) => {
     if (e.target.files[0]) onFile(e.target.files[0]);
     e.target.value = '';
-};
+});
 
+/**
+ * Обрабатывает выбранный видеофайл
+ */
 const onFile = (file) => {
     currentFile = file;
     resultJson = null;
@@ -326,7 +349,7 @@ const onFile = (file) => {
         const fps = parseInt($('fpsRange').value);
         $('infoName').textContent = file.name;
         $('infoRes').textContent = `${probe.videoWidth}×${probe.videoHeight}`;
-        $('infoDur').textContent = fmtTime(probe.duration);
+        $('infoDur').textContent = fmtTimeSec(probe.duration);
         $('infoEst').textContent = Math.ceil(probe.duration * fps) + ' frame(s)';
         $('mainCard').hidden = false;
         $('resultBlock').hidden = true;
@@ -342,16 +365,17 @@ const onFile = (file) => {
 
     $('convertBtn').onclick = () => startConvert(file);
 };
-// старт конвертации
+
+/**
+ * Запускает конвертацию видео в Lottie JSON
+ */
 const startConvert = async (file) => {
     const fps = parseInt($('fpsRange').value);
     const maxFrames = parseInt($('maxFramesRange').value);
     const quality = parseFloat($('qualityRange').value);
     $('resultBlock').hidden = true;
     const controls = [$('convertBtn'), $('resetSettingsBtn'), $('fpsRange'), $('maxFramesRange'), $('qualityRange')];
-    controls.forEach(el => {
-        el.disabled = true;
-    });
+    controls.forEach((el) => { el.disabled = true; });
     const bar = $('progressFill');
     const txt = $('progressText');
     bar.style.width = '0%';
@@ -369,7 +393,7 @@ const startConvert = async (file) => {
         const elapsed = performance.now() - t0;
         bar.style.width = '100%';
         bar.classList.add('done');
-        txt.textContent = 'Done in ' + fmtTime(elapsed / 1000);
+        txt.textContent = 'Done in ' + fmtTimeSec(elapsed / 1000);
         resultJson = json;
         showResult(json, frameStats, elapsed);
     } catch (err) {
@@ -377,13 +401,14 @@ const startConvert = async (file) => {
         txt.textContent = 'Error: ' + err.message;
         console.error(err);
     } finally {
-        controls.forEach(el => {
-            el.disabled = false;
-        });
+        controls.forEach((el) => { el.disabled = false; });
     }
 };
-// Собирает JSON в Blob
-const _buildJsonBlob = (json) => {
+
+/**
+ * Собирает JSON в Blob частями, чтобы не держать весь строковый JSON в памяти
+ */
+const buildJsonBlob = (json) => {
     const skeleton = JSON.stringify({...json, assets: undefined, layers: undefined}).slice(0, -1);
     const parts = [skeleton + ',"assets":['];
     for (let i = 0; i < json.assets.length; i++) {
@@ -398,18 +423,21 @@ const _buildJsonBlob = (json) => {
     parts.push(']}');
     return new Blob(parts, {type: 'application/json'});
 };
-// Показывает результат: статистику, кнопку скачать, превью
+
+/**
+ * Показывает результат конвертации
+ */
 const showResult = (json, frameStats, elapsed = 0) => {
     $('resultBlock').hidden = false;
     const estBytes = (json.assets || []).reduce((s, a) => s + (a.p ? Math.round(a.p.length * 0.75) : 0), 0);
     $('resFrames').textContent = frameStats?.count ?? json.op;
-    $('resTime').textContent = fmtTime(elapsed / 1000);
+    $('resTime').textContent = fmtTimeSec(elapsed / 1000);
     $('resFps').textContent = (frameStats?.fps ?? json.fr) + ' fps';
     $('resRes').textContent = `${frameStats?.width ?? json.w}×${frameStats?.height ?? json.h}`;
     $('resSize').textContent = formatSize(estBytes || frameStats?.totalFrameSize || 0);
     $('downloadBtn').onclick = () => {
         try {
-            const blob = _buildJsonBlob(json);
+            const blob = buildJsonBlob(json);
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -435,7 +463,8 @@ const showResult = (json, frameStats, elapsed = 0) => {
         box.textContent = 'Preview not available';
     }
 };
-// Сброс всего состояния
+
+/** Сбрасывает всё состояние страницы */
 const resetTool = () => {
     currentFile = null;
     resultJson = null;
@@ -445,10 +474,9 @@ const resetTool = () => {
     $('progressFill').className = 'progressBarFill';
     $('progressText').textContent = '';
     [$('convertBtn'), $('resetSettingsBtn'), $('fpsRange'), $('maxFramesRange'), $('qualityRange')]
-        .forEach(el => {
-            el.disabled = false;
-        });
+        .forEach((el) => { el.disabled = false; });
     uploadArea.querySelector('.uploadText').textContent = 'Drop video here or click to upload';
 };
-$('resetBtn').onclick = resetTool;
-$('resetSettingsBtn').onclick = resetTool;
+
+$('resetBtn').addEventListener('click', resetTool);
+$('resetSettingsBtn').addEventListener('click', resetTool);

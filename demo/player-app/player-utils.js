@@ -1,11 +1,16 @@
 import {$, formatSize} from '../common/common.js';
 
-// Устанавливает значение и подпись прогресс-бара
+/**
+ * Устанавливает значение и подпись прогресс-бара
+ */
 export const setProgress = (pct, text) => {
     $('progressFill').style.width = pct + '%';
     $('progressLabel').textContent = text;
 };
-// Помечает зону загрузки
+
+/**
+ * Помечает зону загрузки как загруженную
+ */
 export const markZoneLoaded = (filename, size) => {
     $('zoneJson').classList.add('loaded');
     const hint = $('jsonHint');
@@ -15,7 +20,8 @@ export const markZoneLoaded = (filename, size) => {
     sizeEl.textContent = formatSize(size);
     sizeEl.style.display = '';
 };
-// Сбрасывает зону загрузки в исходное состояние
+
+/** Сбрасывает зону загрузки в исходное состояние */
 export const resetZone = () => {
     $('zoneJson').classList.remove('loaded', 'drag');
     const hint = $('jsonHint');
@@ -23,7 +29,10 @@ export const resetZone = () => {
     hint.textContent = 'animation.json / .lottie';
     $('jsonSize').style.display = 'none';
 };
-// Инициализирует drag-and-drop и клик для зоны загрузки файлов
+
+/**
+ * Инициализирует dnd и клик для зоны загрузки файлов
+ */
 export const setupZone = (zoneId, inputId, onFile) => {
     const zone = $(zoneId);
     const input = $(inputId);
@@ -45,17 +54,20 @@ export const setupZone = (zoneId, inputId, onFile) => {
         e.target.value = '';
     });
 };
-// Показывает строку статуса совместимости файла
+
+/**
+ * Показывает строку статуса совместимости файла
+ */
 export const showCompatStatus = (type, message) => {
     const el = $('compatStatus');
     const icon = {ok: '✓', warn: '⚠', error: '✗'}[type] || '';
     el.className = `pl-compat-status pl-compat-${type}`;
     el.textContent = `${icon} ${message}`;
 };
-// Скрывает строку статуса совместимости
+
+/** Скрывает строку статуса совместимости */
 export const clearCompatStatus = () => {
     const el = $('compatStatus');
     el.className = 'pl-compat-status';
     el.textContent = '';
 };
-

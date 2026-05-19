@@ -4,7 +4,9 @@ const rows = (items) => items.map((item, i) =>
     statRow(i === items.length - 1 ? '└' : '├', item[0], item[1], item[2] || '')
 ).join('');
 
-// Рендерит полный блок статистики оптимизации в переданный контейнер
+/**
+ * Рендерит полный блок статистики оптимизации в контейнер
+ */
 export const renderStats = (container, stats, originalFileSize, animData) => {
     const lottieSize = stats.zipFileSize;
     const saved = originalFileSize - lottieSize;
@@ -28,7 +30,6 @@ export const renderStats = (container, stats, originalFileSize, animData) => {
             <div class="statDetail">${formatSize(Math.abs(saved))}</div>
         </div>
     </div>`;
-    // Тайм-бар по фазам
     const pt = stats.phaseTiming;
     const phaseSum = (pt.analysis || 0) + (pt.videoEncoding || 0) + (pt.imageProcessing || 0) + (pt.zip || 0) || 1;
     const showImgTiming = stats.totalImages > 0 && stats.framesInVideo < stats.totalImages;
@@ -47,7 +48,6 @@ export const renderStats = (container, stats, originalFileSize, animData) => {
     if (showImgTiming) html += `<span class="tImages">Images&nbsp;${fmtTime(pt.imageProcessing || 0)}</span>`;
     html += `<span class="tZip">.lottie&nbsp;${fmtTime(pt.zip || 0)}</span>`;
     html += '</div>';
-    // Таблица общих метрик
     html += '<table class="statsTable">';
     if (animData && animData.fr > 0) {
         const animDurSec = (animData.op - animData.ip) / animData.fr;
@@ -59,10 +59,8 @@ export const renderStats = (container, stats, originalFileSize, animData) => {
         html += `<tr><td>Image processing speed</td><td>${ips} img/sec</td></tr>`;
     }
     html += '</table>';
-    // Детали по ассетам
     html += '<div class="resultBlock">';
     const imgCount = stats.totalImages - stats.framesInVideo;
-    // Карточка: все изображения
     if (stats.totalImages > 0) {
         const fmtsAll = Object.entries(stats.formats || {})
             .map(([k, v]) => `${k.toUpperCase()}: ${v}`)
@@ -78,7 +76,6 @@ export const renderStats = (container, stats, originalFileSize, animData) => {
             <div class="rtBody">${rows(assetItems)}</div>
         </div>`;
     }
-    // Карточка: видео-последовательности
     const totalSeqFound = (stats.sequences || 0) + (stats.videoSkipped || 0);
     if (totalSeqFound > 0) {
         const seqSummary = [['Frame sequences found', `${totalSeqFound}`]];
@@ -88,7 +85,6 @@ export const renderStats = (container, stats, originalFileSize, animData) => {
         html += `<div class="resultCard" style="border-left-color:#6366f1">
             <div class="rcHead"><span class="rcTitle">VIDEO FROM SEQUENCES</span></div>
             <div class="rtBody">${rows(seqSummary)}</div>`;
-        // Подкарточки по каждому видео
         for (const vd of stats.videoDetails || []) {
             const es = vd.encodingStats || {};
             const vItems = [
@@ -118,7 +114,6 @@ export const renderStats = (container, stats, originalFileSize, animData) => {
         }
         html += '</div>';
     }
-    // Карточка: одиночные изображения
     if (imgCount > 0) {
         const singleBefore = stats.singleImagesSizeBefore || 0;
         const singleAfter = stats.sizeAfter || 0;

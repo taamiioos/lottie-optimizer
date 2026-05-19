@@ -386,7 +386,7 @@
 }
 
 .pl-ctrl-btn {
-    padding: 5px 5px;
+    padding: 5px;
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -416,7 +416,7 @@
     border-color: transparent;
     color: #fff;
     font-size: 13px;
-    padding: 8px 8px;
+    padding: 8px;
     font-weight: 600;
 }
 

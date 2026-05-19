@@ -28,7 +28,7 @@ const Optimizer = {
         const data = JSON.parse(await animFile.async('string'));
         // Встраиваем картинки из ZIP как data:image base64
         for (const asset of (data.assets || [])) {
-            if (!asset.p || asset.p.startsWith('data:')) continue;
+            if (!asset.p || asset.p.startsWith('data:') || asset.ty === 2 || asset.ty === 3) continue;
             const path = asset.u ? asset.u.replace(/\/$/, '') + '/' + asset.p : asset.p;
             const file = zip.file(path) || zip.file('images/' + asset.p);
             if (!file) continue;
@@ -96,8 +96,8 @@ const Optimizer = {
             removeRedundantKeyframes: shouldRemoveRedundant = true,
         } = options;
         const defaultsToRemove = new Set([
-            'ddd', 'hd', 'ao', 'sr', 'st', 'bm', 'ind',
-            'ip', 'op', 'nm', 'mn', 'cl', 'ln', 'ct', 'ty',
+            'ddd', 'hd', 'ao', 'st', 'bm',
+            'nm', 'mn', 'cl', 'ln', 'ct',
             'ef', 'hasMask', 'maskProperties',
         ]);
         const factor = Math.pow(10, precision);
@@ -225,13 +225,13 @@ const Optimizer = {
                         worker.terminate();
                         const lottieBlob = new Blob([msg.result.zipBuffer], {type: 'application/zip'});
                         const finalResult = {...msg.result, lottie: lottieBlob, zip: lottieBlob, zipBuffer: undefined};
-                        // восстанавливаем preview-кадры для видеоассетов из оригинала
+                        // восстанавливаем preview-кадры VideoFrame (ty:3) из оригинала
                         if (finalResult.preview?.assets && data.assets?.length) {
                             const origById = new Map(data.assets.map(a => [a.id, a]));
                             for (const pa of finalResult.preview.assets) {
-                                if (pa._video && pa.id && !pa.p) {
+                                if (pa.ty === 3 && pa.id && !pa.p?.startsWith('data:')) {
                                     const orig = origById.get(pa.id);
-                                    if (orig?.p) pa.p = orig.p;
+                                    if (orig?.p) { pa.p = orig.p; pa.u = ''; pa.e = 1; delete pa.ty; delete pa.vsid; delete pa.t; }
                                 }
                             }
                         }
@@ -464,9 +464,38 @@ const Optimizer = {
                     continue;
                 }
 
+                const videoAssetId = `video_${videoCounter}`;
                 const videoFile = `video/seq_${videoCounter}.mp4`;
+                const frameDurationMs = 1000 / fps;
+                ctx.result.assets.push({
+                    id: videoAssetId,
+                    ty: 2,
+                    w: videoResult.width,
+                    h: videoResult.height,
+                    u: 'video/',
+                    p: `seq_${videoCounter}.mp4`,
+                    e: 0,
+                });
+                seq.ids.forEach((id, frameIdx) => {
+                    const asset = assetById.get(id);
+                    if (!asset) return;
+                    const w = asset.w;
+                    const h = asset.h;
+                    for (const k of Object.keys(asset)) delete asset[k];
+                    asset.id = id;
+                    asset.ty = 3;
+                    asset.w = w || videoResult.width;
+                    asset.h = h || videoResult.height;
+                    asset.t = Math.round(frameIdx * frameDurationMs);
+                    asset.u = '';
+                    asset.vsid = videoAssetId;
+                    asset.e = 1;
+                    videoFrameIds.add(id);
+                    videoFrameSeqIndex.set(id, videoCounter);
+                });
+
                 const videoDetail = {
-                    id: `video_${videoCounter}`,
+                    id: videoAssetId,
                     file: videoFile,
                     width: videoResult.width, height: videoResult.height,
                     frames: videoResult.frames, fps: videoResult.fps,
@@ -484,10 +513,6 @@ const Optimizer = {
                 stats.sequences++;
                 stats.framesInVideo += frames.length;
                 stats.videoSize += videoResult.blob.size;
-                seq.ids.forEach(id => {
-                    videoFrameIds.add(id);
-                    videoFrameSeqIndex.set(id, videoCounter);
-                });
                 videoCounter++;
 
             } catch (err) {
@@ -506,16 +531,11 @@ const Optimizer = {
     },
     /**
      * Обрабатывает одиночные изображения (не вошедшие в видео):
-     * - дедупликация по хэшу
-     * - конвертация в WebP
-     * - сохранение в архив как images/
      */
     async _processImages(ctx, onProgress) {
         const {
             assets,
             previewAssets,
-            videoFrameIds,
-            videoFrameSeqIndex,
             blobCache,
             zip,
             hashMap,
@@ -528,13 +548,6 @@ const Optimizer = {
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
             if (!asset.p?.startsWith('data:image')) continue;
-            if (videoFrameIds.has(asset.id)) {
-                asset.p = '';
-                asset.u = '';
-                asset._video = `video_${videoFrameSeqIndex.get(asset.id)}`;
-                previewAssets[i]._video = `video_${videoFrameSeqIndex.get(asset.id)}`;
-                continue;
-            }
             candidates.push({asset, previewAsset: previewAssets[i]});
         }
         const total = candidates.length;
@@ -630,14 +643,10 @@ const Optimizer = {
     },
 
     /**
-     * Собирает итоговый .lottie архив:
-     * - записывает JSON
-     * - добавляет картинки и видео
-     * - создаёт manifest.json
+     * Собирает итоговый .lottie архив
      */
     async _packZip(ctx, onProgress) {
-        const {result, animId, zip, videoAssets, jsonMinify, jsonPrecision, removeRedundantKeyframes} = ctx;
-        if (videoAssets.length > 0) result.videoAssets = videoAssets;
+        const {result, animId, zip, jsonMinify, jsonPrecision, removeRedundantKeyframes} = ctx;
         onProgress({phase: 'zip', message: 'Создание .lottie...', percent: 90});
         const finalJson = jsonMinify
             ? Optimizer.minifyLottieJson(structuredClone(result))
