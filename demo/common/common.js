@@ -10,7 +10,7 @@ const ICON_MOON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" s
 </svg>`;
 
 /**
- * Применяет тему и обновляет иконку кнопки
+ * Applies the theme and updates the button icon
  */
 export const applyTheme = (theme) => {
     document.body.classList.toggle('light', theme === 'light');
@@ -18,12 +18,12 @@ export const applyTheme = (theme) => {
     if (btn) btn.innerHTML = theme === 'light' ? ICON_MOON : ICON_SUN;
 };
 
-/** Инициализирует тему из localStorage или системных предпочтений */
+/** Initializes the theme from localStorage or system preferences */
 export const initTheme = () => applyTheme(
     localStorage.getItem(THEME_KEY) || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
 );
 
-/** Переключает тему и сохраняет выбор в localStorage */
+/** Switches the theme and saves the selection in localStorage */
 export const toggleTheme = () => {
     const isLight = document.body.classList.contains('light');
     const next = isLight ? 'dark' : 'light';
@@ -32,7 +32,7 @@ export const toggleTheme = () => {
 };
 
 /**
- * Форматирует количество байт в читаемую строку
+ * Formats the number of bytes into a readable string
  */
 export const formatSize = (bytes) => {
     if (!bytes) return '0 B';
@@ -40,9 +40,8 @@ export const formatSize = (bytes) => {
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
 };
-
 /**
- * Форматирует миллисекунды в читаемую строку
+ * Formats milliseconds into a readable string
  */
 export const fmtTime = (ms) => {
     if (ms < 1000) return ms.toFixed(0) + ' ms';
@@ -50,7 +49,7 @@ export const fmtTime = (ms) => {
 };
 
 /**
- * Строит HTML одной строки статистики в стиле дерева
+ * Builds HTML of a single line of statistics in tree style
  */
 export const statRow = (pfx, key, val, cls = '') =>
     `<div class="rtRow">
@@ -60,7 +59,7 @@ export const statRow = (pfx, key, val, cls = '') =>
     </div>`;
 
 /**
- * Инициирует скачивание файла в браузере
+ * Initiates the download of a file in the browser
  */
 export const download = (blob, name) => {
     const url = URL.createObjectURL(blob);

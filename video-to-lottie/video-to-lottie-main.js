@@ -1,7 +1,7 @@
 import {$, formatSize} from '../demo/common/common.js';
 
 /**
- * Перематывает видео на заданное время и ждёт окончания перемотки
+ * Rewinds the video to the specified time and waits for the rewind to finish
  */
 const seekTo = (video, time) => new Promise((res) => {
     if (Math.abs(video.currentTime - time) < 0.001) {
@@ -17,7 +17,7 @@ const seekTo = (video, time) => new Promise((res) => {
 });
 
 /**
- * Конвертирует canvas в Blob (WebP)
+ * Converts canvas to Blob (WebP)
  */
 const canvasToBlob = (canvas, quality) => {
     if (canvas.convertToBlob) return canvas.convertToBlob({type: 'image/webp', quality});
@@ -25,7 +25,7 @@ const canvasToBlob = (canvas, quality) => {
 };
 
 /**
- * Извлекает кадры из видео через WebCodecs + MP4Box
+ * Extracts frames from a video using WebCodecs + MP4Box
  */
 const extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onProgress) => {
     const FEED_CHUNK = 8 * 1024 * 1024;
@@ -136,7 +136,7 @@ const extractFramesWebCodecs = async (videoFile, fps, maxFrames, quality, onProg
 };
 
 /**
- * Извлекает кадры через перемотку HTMLVideoElement
+ * Retrieves frames through HTMLVideoElement rewinding
  */
 const extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgress) => {
     const video = document.createElement('video');
@@ -180,7 +180,7 @@ const extractFramesSeeked = async (videoFile, fps, maxFrames, quality, onProgres
 };
 
 /**
- * Извлекает кадры из видео
+ * Extracts frames from a video
  */
 const extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) => {
     if ('VideoDecoder' in window && typeof MP4Box !== 'undefined') {
@@ -195,7 +195,7 @@ const extractFrames = async (videoFile, fps, maxFrames, quality, onProgress) => 
 };
 
 /**
- * Собирает JSON Lottie-анимации из массива Blob-кадров
+ * Collects JSON Lottie animations from an array of Blob frames
  */
 const buildLottieJson = async (frames, width, height, fps, name, onProgress) => {
     const BATCH = 20;
@@ -229,7 +229,7 @@ const buildLottieJson = async (frames, width, height, fps, name, onProgress) => 
 };
 
 /**
- * Конвертирует видеофайл в Lottie JSON
+ * Converts a video file to Lottie JSON
  */
 const convertVideoToLottie = async (videoFile, {
     fps = 24, maxFrames = 150, quality = 0.85, onProgress = () => {}
@@ -274,7 +274,7 @@ const convertVideoToLottie = async (videoFile, {
 };
 
 /**
- * Форматирует секунды в читаемую строку
+ * Formats seconds into a readable string
  */
 const fmtTimeSec = (sec) => {
     const m = Math.floor(sec / 60), s = (sec % 60).toFixed(1);
@@ -282,7 +282,7 @@ const fmtTimeSec = (sec) => {
 };
 
 /**
- * Привязывает слайдер к отображению значения и вызывает updateEstimate при изменении
+ * Binds the slider to the value display and calls updateEstimate when changed
  */
 const syncSlider = (rangeId, valId, decimals = 0) => {
     const range = $(rangeId), val = $(valId);
@@ -303,7 +303,7 @@ let resultJson = null;
 let currentFile = null;
 let probe = null;
 
-/** Обновляет расчётное количество кадров по текущим настройкам */
+/** Updates the estimated number of frames based on the current settings */
 const updateEstimate = () => {
     if (!probe || !currentFile) return;
     const fps = parseInt($('fpsRange').value);
@@ -331,7 +331,7 @@ fileInput.addEventListener('change', (e) => {
 });
 
 /**
- * Обрабатывает выбранный видеофайл
+ * Processes the selected video file
  */
 const onFile = (file) => {
     currentFile = file;
@@ -367,7 +367,7 @@ const onFile = (file) => {
 };
 
 /**
- * Запускает конвертацию видео в Lottie JSON
+ * Starts converting a video to Lottie JSON
  */
 const startConvert = async (file) => {
     const fps = parseInt($('fpsRange').value);
@@ -406,7 +406,7 @@ const startConvert = async (file) => {
 };
 
 /**
- * Собирает JSON в Blob частями, чтобы не держать весь строковый JSON в памяти
+ * Collects JSON in Blob in chunks, so as not to keep the whole string JSON in memory
  */
 const buildJsonBlob = (json) => {
     const skeleton = JSON.stringify({...json, assets: undefined, layers: undefined}).slice(0, -1);
@@ -425,7 +425,7 @@ const buildJsonBlob = (json) => {
 };
 
 /**
- * Показывает результат конвертации
+ * Displays the conversion result
  */
 const showResult = (json, frameStats, elapsed = 0) => {
     $('resultBlock').hidden = false;
@@ -463,8 +463,7 @@ const showResult = (json, frameStats, elapsed = 0) => {
         box.textContent = 'Preview not available';
     }
 };
-
-/** Сбрасывает всё состояние страницы */
+/** Resets the entire page state */
 const resetTool = () => {
     currentFile = null;
     resultJson = null;
