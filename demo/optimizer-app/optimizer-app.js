@@ -6,38 +6,43 @@ import {createAnim, createSlotSettings, setupDemoControls} from './optimizer-uti
 initTheme();
 window.__toggleTheme = toggleTheme;
 
-// Список демо-анимаций
+/** Built-in demo animations shown on page load */
 const DEMOS = [
     {name: 'v5', file: '../../samples-lottie/v3.lottie.json'},
     {name: 'v2', file: '../../samples-lottie/v2.lottie.json'},
     {name: 'sample2', file: '../../samples-lottie/sample1.json'},
 ];
-// Кэш данных и настроек по слотам
+
+/** Per-slot state: animBefore, animAfter, readSettings */
 const slotSettingsMap = {};
 const demoCache = [];
 let userCache = null;
 let userResult = null;
 let _fileHandling = false;
 
-// Возвращает элемент по слоту и имени части
+/** Returns a named sub-element for the given slot */
 const slotEl = (slotId, name) => slotId === 'user'
     ? $(`user-${name}`)
     : $(`demo-${name}-${slotId}`);
+
 const slotPrefix = (slotId) => slotId === 'user' ? 'user' : `demo-${slotId}`;
 
-// Возвращает корневой элемент слота в DOM
+/** Returns the root DOM element for the slot */
 const slotRootEl = (slotId) => slotId === 'user'
     ? $('userSlot')
     : document.querySelector(`.demoSlot[data-index="${slotId}"]`);
 
-// Запускает оптимизацию для любого слота
+/**
+ * Runs Optimizer.run() for the given slot, updates the progress bar,
+ * renders the optimized preview and stats, and sets up playback controls
+ * For the user slot, also shows the download button
+ */
 const runOptimize = async (slotId, data, fileSize, name, settings) => {
     const p = slotPrefix(slotId);
     const bar = slotEl(slotId, 'bar');
     const text = slotEl(slotId, 'text');
     const statsEl = slotEl(slotId, 'stats');
     const afterEl = slotEl(slotId, 'after');
-    // уничтожаем предыдущую анимацию «после»
     if (slotSettingsMap[slotId]?.animAfter) {
         slotSettingsMap[slotId].animAfter.destroy();
         slotSettingsMap[slotId].animAfter = null;
@@ -61,29 +66,30 @@ const runOptimize = async (slotId, data, fileSize, name, settings) => {
         try {
             animAfter = createAnim(afterEl, result.preview);
         } catch (e) {
-            console.error(`[${p}] Не удалось отрендерить результат:`, e);
+            console.error(`[${p}] Failed to render result:`, e);
         }
         if (slotSettingsMap[slotId]) slotSettingsMap[slotId].animAfter = animAfter;
         renderStats(statsEl, result.stats, fileSize, data);
         const animBefore = slotSettingsMap[slotId]?.animBefore;
         if (animBefore && animAfter) setupDemoControls(slotId.toString(), animBefore, animAfter);
-        // только для пользовательского слота
         if (slotId === 'user') {
             userResult = result;
             $('userDownloads').style.display = 'flex';
         }
         return result;
-
     } catch (err) {
         bar.classList.add('error');
         bar.style.width = '100%';
         text.textContent = 'Error: ' + err.message;
-        console.error(`[${p}] Ошибка оптимизации:`, err);
+        console.error(`[${p}] Optimization error:`, err);
         return null;
     }
 };
 
-// Инициализирует слот: рендерит оригинал, создаёт панель настроек
+/**
+ * Initializes a slot: renders the original animation, injects the settings
+ * panel, then immediately kicks off optimization
+ */
 const initSlot = async (slotId, data, fileSize, name) => {
     const p = slotPrefix(slotId);
     const beforeEl = slotEl(slotId, 'before');
@@ -96,7 +102,7 @@ const initSlot = async (slotId, data, fileSize, name) => {
     try {
         animBefore = createAnim(beforeEl, structuredClone(data));
     } catch (e) {
-        console.error(`[${p}] Не удалось отрендерить оригинал:`, e);
+        console.error(`[${p}] Failed to render original:`, e);
     }
     if (!slotSettingsMap[slotId]) {
         const statsEl = slotEl(slotId, 'stats');
@@ -108,12 +114,13 @@ const initSlot = async (slotId, data, fileSize, name) => {
     } else {
         slotSettingsMap[slotId].animBefore = animBefore;
     }
-
     const settings = slotSettingsMap[slotId].readSettings();
     return runOptimize(slotId, data, fileSize, name, settings);
 };
 
-// Загружает демо-анимацию по индексу и запускает оптимизацию в нужном слоте
+/**
+ * Fetches a demo animation by index, caches it, and runs initSlot
+ * */
 const loadDemo = async (i) => {
     const demo = DEMOS[i];
     $(`demo-load-wrap-${i}`).style.display = 'none';
@@ -135,11 +142,14 @@ const loadDemo = async (i) => {
         console.error(`[demo-${i}]`, err);
     }
 };
-
 for (let i = 0; i < DEMOS.length; i++) {
     $(`demo-load-btn-${i}`).addEventListener('click', () => loadDemo(i));
 }
-// Обрабатывает файл выбранный пользователем
+
+/**
+ * Parses a user-supplied .json or .lottie file and runs it through initSlot
+ * Guarded by fileHandling to prevent concurrent loads
+ */
 const handleUserFile = async (file) => {
     if (_fileHandling) return;
     _fileHandling = true;
@@ -150,7 +160,6 @@ const handleUserFile = async (file) => {
     $('user-text').textContent = 'Loading...';
     $('user-bar').style.width = '0%';
     $('user-bar').className = 'progressBarFill';
-    // вспомогательная функция уступки потока
     const yieldToMain = () => {
         if (window.scheduler?.yield) return scheduler.yield();
         if (typeof requestIdleCallback === 'function') {
@@ -181,7 +190,7 @@ const handleUserFile = async (file) => {
         }
         await initSlot('user', data, file.size, file.name);
     } catch (err) {
-        console.error('[user] Ошибка при обработке файла:', err);
+        console.error('[user] File handling error:', err);
         $('user-text').textContent = `Error: ${err.message}`;
         $('user-bar').classList.add('error');
         $('user-bar').style.width = '100%';
@@ -189,7 +198,11 @@ const handleUserFile = async (file) => {
         _fileHandling = false;
     }
 };
-// Полностью сбрасывает пользовательский слот в исходное состояние
+
+/**
+ * Tears down the user slot completely — destroys animations, removes the
+ * settings panel, resets all UI state back to the initial empty state
+ */
 const resetUserSlot = () => {
     if (_fileHandling) return;
     slotSettingsMap['user']?.animBefore?.destroy();
@@ -214,8 +227,11 @@ const resetUserSlot = () => {
     $('user-text').textContent = '';
     userName.textContent = 'Your file';
 };
+
 const uploadArea = $('uploadArea');
 const fileInput = $('fileInput');
+
+/** Forwards a File to handleUserFile if it's a supported type */
 const processFile = (file) => {
     if (file && (file.name.endsWith('.json') || file.name.endsWith('.lottie'))) {
         handleUserFile(file);

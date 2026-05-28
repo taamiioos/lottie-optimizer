@@ -1,4 +1,7 @@
-// уровень H.264 по количеству макроблоков
+/**
+ * Picks the right H.264 level codec string for the given dimensions
+ * based on the number of macroblocks
+ */
 export const _pickAvcCodec = (width, height) => {
     const mbs = Math.ceil(width / 16) * Math.ceil(height / 16);
     if (mbs <= 1620)  return 'avc1.42E01E';
@@ -10,9 +13,12 @@ export const _pickAvcCodec = (width, height) => {
     return 'avc1.42E033';
 };
 
-// определяет ключевые кадры по попиксельному diff миниатюр (32×32)
+/**
+ * Detects which frames should be keyframes by computing per-pixel diff
+ * between 32×32 thumbnails. Frame 0 is always a keyframe
+ */
 export const _detectKeyFrames = async (images, threshold = 45) => {
-    const kf = new Set([0]); // первый кадр всегда ключевой
+    const kf = new Set([0]);
     if (images.length <= 1) return kf;
     const SIZE = 32;
     const canvas = new OffscreenCanvas(SIZE, SIZE);
@@ -41,7 +47,9 @@ export const _detectKeyFrames = async (images, threshold = 45) => {
     return kf;
 };
 
-// Форматирует количество байт в читаемую строку
+/**
+ * Formats a byte count into a human-readable string
+ */
 export const formatSize = (bytes) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -50,7 +58,10 @@ export const formatSize = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// Конвертирует Uint8Array в строку base64
+/**
+ * Converts a Uint8Array to a base64 string in chunks to avoid
+ * call-stack overflow on large buffers
+ */
 export function _uint8ToBase64(bytes) {
     let binary = '';
     const chunk = 8192;

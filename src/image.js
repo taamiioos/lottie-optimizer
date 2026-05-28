@@ -1,8 +1,9 @@
 const ImageProcessor = {
     _webpSupported: null,
+
     /**
-     * Проверяет поддержку кодирования WebP в текущем окружении
-     * Результат кешируется — повторные вызовы бесплатны
+     * Checks whether the current environment can encode WebP
+     * Result is cached — subsequent calls are free
      */
     async canWebP() {
         if (this._webpSupported !== null) return this._webpSupported;
@@ -22,7 +23,9 @@ const ImageProcessor = {
         return this._webpSupported;
     },
 
-    //Декодирует data URL в Blob
+    /**
+     * Decodes a data URL into a Blob
+     */
     decodeBase64(dataUrl) {
         try {
             const comma = dataUrl.indexOf(',');
@@ -38,8 +41,8 @@ const ImageProcessor = {
     },
 
     /**
-     * Вычисляет SHA-256 хеш байтов изображения
-     * Используется для обнаружения дубликатов
+     * Computes SHA-256 hash of the image bytes
+     * Used to detect duplicate assets
      */
     async hash(bytes) {
         const buf = await crypto.subtle.digest('SHA-256', bytes);
@@ -47,9 +50,9 @@ const ImageProcessor = {
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
     },
+
     /**
-     * Определяет формат изображения по magic bytes
-     * @param {Uint8Array} bytes — первые 16 байт файла
+     * Detects image format from magic bytes
      */
     detectFormat(bytes) {
         if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'png';
@@ -58,11 +61,15 @@ const ImageProcessor = {
         if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[8] === 0x57 && bytes[9] === 0x45) return 'webp';
         return 'png';
     },
-    // Возвращает расширение файла для формата
+
+    /** Maps a format name to its file extension */
     extFromFormat(format) {
         return {png: 'png', jpeg: 'jpg', gif: 'gif', webp: 'webp'}[format] ?? 'png';
     },
-    // Кодирует Blob в WebP через Canvas/OffscreenCanvas
+
+    /**
+     * Re-encodes a Blob as WebP via Canvas / OffscreenCanvas
+     */
     async toWebP(blob, quality = 0.8) {
         const bitmap = await createImageBitmap(blob);
         try {
@@ -85,11 +92,8 @@ const ImageProcessor = {
     },
 
     /**
-     * Оптимизирует изображение: конвертирует в WebP если это уменьшает размер,
-     * иначе возвращает оригинал с определённым форматом.
-     * @param {Blob} blob — исходное изображение
-     * @param {number} [quality=0.8] — качество WebP
-     * @param {Uint8Array|null} [hintBytes] — первые байты для detectFormat
+     * Optimizes an image: converts to WebP if it's smaller, otherwise keeps
+     * the original with its detected format
      */
     async process(blob, quality = 0.8, hintBytes = null) {
         if (await this.canWebP()) {

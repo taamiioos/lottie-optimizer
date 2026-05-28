@@ -3,7 +3,8 @@ import {ImageProcessor} from "./image.js";
 
 const VideoEncoderUtil = {
     /**
-     * Кодирует массив кадров (data URL или Blob) в MP4/H.264 через WebCodecs
+     * Encodes an array of frames into an MP4/H.264 blob
+     * using the WebCodecs API. Returns the blob plus encoding stats
      */
     async encode(frames, options = {}) {
         const {
@@ -11,33 +12,26 @@ const VideoEncoderUtil = {
             }
         } = options;
         if (typeof VideoEncoder === 'undefined')
-            throw new Error('WebCodecs API не поддерживается в этом браузере');
+            throw new Error('WebCodecs API is not supported in this environment');
         const t0 = performance.now();
-        // Подготовка: первый кадр, размеры, настройки кодека
         const firstImg = await this._loadImage(frames[0]);
         const cfg = this._prepare(firstImg, fps, bitrateMultiplier);
-        // Создаём и настраиваем VideoEncoder
         const {encoder, state, configureTime} = await this._setupEncoder(cfg);
-        // загружаем уменьшенные копии кадров (для детектора ключевых кадров)
         const thumbT0 = performance.now();
         const thumbs = await this._loadThumbs(frames);
         const loadTime = performance.now() - thumbT0;
         if (state.error) throw state.error;
-        // Определяем, какие кадры сделать ключевыми
         const keyFrameSet = await _detectKeyFrames(thumbs);
         thumbs.forEach(t => t?.close());
-        // Кодируем все кадры, передаём в энкодер
         const encodeT0 = performance.now();
         await this._encodeFrames(encoder, frames, firstImg, cfg, keyFrameSet, state, onProgress);
         const encodeTime = performance.now() - encodeT0;
         if (state.error) throw state.error;
-        // Завершаем кодирование и проверяем результат
         await encoder.flush();
         encoder.close();
         if (state.error) throw state.error;
-        if (state.chunks.length === 0) throw new Error('Энкодер не вернул ни одного чанка');
-        if (!state.decoderConfig?.description) throw new Error('Не получен avcDecoderConfig от энкодера');
-        // Упаковываем полученные чанки в MP4-контейнер
+        if (state.chunks.length === 0) throw new Error('Encoder produced no chunks');
+        if (!state.decoderConfig?.description) throw new Error('No avcDecoderConfig received from encoder');
         const muxT0 = performance.now();
         const mp4blob = this._muxToMP4(state.chunks, {
             width: cfg.encWidth, height: cfg.encHeight,
@@ -45,7 +39,6 @@ const VideoEncoderUtil = {
             encoderConfig: state.decoderConfig,
         });
         const muxTime = performance.now() - muxT0;
-        // обираем статистику кодирования
         const encodingStats = this._buildStats({
             cfg, state, mp4blob,
             t0, configureTime, loadTime, encodeTime, muxTime,
@@ -60,19 +53,19 @@ const VideoEncoderUtil = {
             encodingStats,
         };
     },
+
     /**
-     * Вычисляет параметры кодирования по первому кадру и fps
+     * Derives encoding parameters from the first frame and target fps
+     * H.264 requires even dimensions, so odd sizes are padded by 1px
      */
     _prepare(firstImg, fps, bitrateMultiplier) {
         const width = firstImg.naturalWidth || firstImg.width;
         const height = firstImg.naturalHeight || firstImg.height;
-        // H.264 требует чётных размеров
         const encWidth = width % 2 === 0 ? width : width + 1;
         const encHeight = height % 2 === 0 ? height : height + 1;
         const timescale = 90000;
         const sampleDuration = Math.round(timescale / fps);
         const frameDurationUs = Math.round(1_000_000 / fps);
-        // Битрейт
         const bitrateTarget = Math.max(
             200_000,
             Math.min(8_000_000, Math.round(encWidth * encHeight * 0.15 * fps * bitrateMultiplier))
@@ -85,24 +78,23 @@ const VideoEncoderUtil = {
             bitrateTarget,
         };
     },
+
     /**
-     * Создаёт и настраивает VideoEncoder, возвращает энкодер и состояние
+     * Creates and configures a VideoEncoder. Hardware acceleration is preferred
+     * where supported; falls back to software
      */
     async _setupEncoder(cfg) {
         const {codec, encWidth, encHeight, bitrateTarget, fps, sampleDuration} = cfg;
-        // Проверяем, поддерживается ли аппаратное ускорение
         const support = await VideoEncoder.isConfigSupported({
             codec, width: encWidth, height: encHeight,
             bitrate: bitrateTarget, framerate: fps,
             hardwareAcceleration: 'prefer-hardware',
         });
         const hwAccel = support.supported ? 'prefer-hardware' : 'prefer-software';
-        // Состояние: накопленные чанки, конфиг декодера, ошибка
         const state = {chunks: [], decoderConfig: null, error: null, hwAccel};
         const t0 = performance.now();
         const encoder = new VideoEncoder({
             output: (chunk, metadata) => {
-                // Копируем данные чанка
                 const buf = new ArrayBuffer(chunk.byteLength);
                 chunk.copyTo(buf);
                 state.chunks.push({
@@ -129,8 +121,9 @@ const VideoEncoderUtil = {
 
         return {encoder, state, configureTime: performance.now() - t0};
     },
+
     /**
-     * Загружает уменьшенные копии кадров для детектора ключевых кадров
+     * Loads 32×32 thumbnails of every frame for the keyframe detector
      */
     _loadThumbs(frames) {
         return Promise.all(
@@ -140,14 +133,15 @@ const VideoEncoderUtil = {
             })
         );
     },
+
     /**
-     * Кодирует все кадры, передаёт в энкодер с учётом ключевых кадров
+     * Encodes all frames into the VideoEncoder, prefetching the next 4 frames
+     * while the current one is being processed
      */
     async _encodeFrames(encoder, frames, firstImg, cfg, keyFrameSet, state, onProgress) {
         const {encWidth, encHeight, needsPadding, frameDurationUs} = cfg;
         const canvas = needsPadding ? new OffscreenCanvas(encWidth, encHeight) : null;
         const ctx = canvas?.getContext('2d');
-        // Предзагрузка следующих кадров
         const PREFETCH = 4;
         const preloaded = new Array(frames.length).fill(null);
         for (let p = 1; p <= Math.min(PREFETCH, frames.length - 1); p++)
@@ -155,10 +149,8 @@ const VideoEncoderUtil = {
 
         for (let i = 0; i < frames.length; i++) {
             if (state.error) throw state.error;
-            // Берём текущий кадр: первый – уже загружен, остальные – из предзагрузки
             const img = i === 0 ? firstImg : await preloaded[i];
             preloaded[i] = null;
-            // Загружаем следующий в ожидании
             if (i + PREFETCH + 1 < frames.length)
                 preloaded[i + PREFETCH + 1] = this._loadImage(frames[i + PREFETCH + 1]);
             let vf;
@@ -179,21 +171,19 @@ const VideoEncoderUtil = {
     },
 
     /**
-     * Упаковывает закодированные чанки в MP4-контейнер через MP4Box
+     * Packs encoded chunks into an MP4 container via MP4Box
+     * Chunks are sorted by timestamp before muxing to guarantee correct order
      */
     _muxToMP4(chunks, {width, height, timescale, sampleDuration, encoderConfig}) {
         const mp4file = MP4Box.createFile();
         const description = this._toArrayBuffer(encoderConfig.description);
-        // Сортируем чанки по timestamp для гарантии правильного порядка
         const sorted = chunks.slice().sort((a, b) => a.timestamp - b.timestamp);
-        // Добавляем видеодорожку с конфигурацией H.264
         const trackId = mp4file.addTrack({
             timescale, width, height,
             nb_samples: sorted.length,
             brands: ['isom', 'iso2', 'avc1', 'mp41'],
             avcDecoderConfigRecord: description,
         });
-        // Добавляем каждый сэмпл
         for (let i = 0; i < sorted.length; i++) {
             mp4file.addSample(trackId, this._toArrayBuffer(sorted[i].data), {
                 duration: sampleDuration,
@@ -209,9 +199,7 @@ const VideoEncoderUtil = {
         return new Blob([stream.buffer], {type: 'video/mp4'});
     },
 
-    /**
-     * Формирует детальную статистику кодирования
-     */
+    /** Collects detailed encoding stats from the completed encode run */
     _buildStats({cfg, state, mp4blob, t0, configureTime, loadTime, encodeTime, muxTime, totalFrames}) {
         const {fps, encWidth, encHeight, width, height, bitrateTarget} = cfg;
         const {chunks, hwAccel} = state;
@@ -238,22 +226,22 @@ const VideoEncoderUtil = {
             fps,
         };
     },
-    /**
-     * Приводит ArrayBuffer или TypedArray к чистому ArrayBuffer
-     */
+
+    /** Normalizes ArrayBuffer / TypedArray to a plain ArrayBuffer */
     _toArrayBuffer(source) {
         if (source instanceof ArrayBuffer) return source;
         if (ArrayBuffer.isView(source))
             return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
         return new Uint8Array(source).buffer;
     },
+
     /**
-     * Загружает изображение: data URL или Blob в ImageBitmap
+     * Loads a frame (data URL or Blob) into an ImageBitmap
+     * Falls back to an <img> element in environments without createImageBitmap
      */
     async _loadImage(src) {
         const blob = typeof src === 'string' ? ImageProcessor.decodeBase64(src) : src;
         if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
-        // фоллбэк для окружений без createImageBitmap
         return new Promise((resolve, reject) => {
             const img = new Image();
             const url = URL.createObjectURL(blob);
@@ -263,7 +251,7 @@ const VideoEncoderUtil = {
             };
             img.onerror = () => {
                 URL.revokeObjectURL(url);
-                reject(new Error('Не удалось загрузить изображение'));
+                reject(new Error('Failed to load image'));
             };
             img.src = url;
         });

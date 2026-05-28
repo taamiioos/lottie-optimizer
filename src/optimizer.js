@@ -5,11 +5,12 @@ import {_uint8ToBase64, formatSize} from './utils.js';
 const Optimizer = {
     _workerUrl: new URL('./worker.js', import.meta.url),
     /**
-     * Превращает входные данные (JSON, Blob, ArrayBuffer) в объект анимации
-     * Если это .lottie — распаковывает, находит JSON, встраивает картинки как base64
+     * Parses any supported input format into a plain animation data object.
+     * A plain JSON object is returned as-is. For a .lottie ZIP the archive is
+     * unpacked, the animation JSON is located, and image assets are inlined as
+     * base64 data-URLs so the rest of the pipeline has a uniform input
      */
     async parseLottieInput(input) {
-        // обычный JSON-объект — сразу возвращаем
         if (input && typeof input === 'object'
             && !(input instanceof Blob)
             && !(input instanceof ArrayBuffer)
@@ -17,7 +18,6 @@ const Optimizer = {
             const animId = (input.nm || 'animation').replace(/[^a-z0-9_-]/gi, '_').slice(0, 64) || 'animation';
             return {data: input, animId};
         }
-        // .lottie ZIP
         const raw = input instanceof Blob ? await input.arrayBuffer() : input;
         const zip = await JSZip.loadAsync(raw);
         const manifestFile = zip.file('manifest.json');
@@ -26,7 +26,6 @@ const Optimizer = {
         const animFile = zip.file(`animations/${animId}.json`);
         if (!animFile) throw new Error(`.lottie: не найден animations/${animId}.json`);
         const data = JSON.parse(await animFile.async('string'));
-        // Встраиваем картинки из ZIP как data:image base64
         for (const asset of (data.assets || [])) {
             if (!asset.p || asset.p.startsWith('data:') || asset.ty === 2 || asset.ty === 3) continue;
             const path = asset.u ? asset.u.replace(/\/$/, '') + '/' + asset.p : asset.p;
@@ -48,7 +47,9 @@ const Optimizer = {
         return {data, animId};
     },
     /**
-     * Ищет в списке ассетов последовательности кадров по именам с числовыми суффиксами
+     * Finds frame sequences in the asset list by looking for assets whose IDs
+     * share a common prefix followed by a numeric suffix
+     * Groups with fewer than 2 frames or too many gaps are skipped
      */
     findSequences(assets) {
         const imageAssets = assets.filter(a => a.p?.startsWith('data:image') && a.id);
@@ -83,11 +84,11 @@ const Optimizer = {
         return sequences;
     },
     /**
-     * Минифицирует JSON анимации:
-     * - округляет числа до заданной точности
-     * - удаляет свойства с дефолтными значениями
-     * - схлопывает статичные анимированные ключи в константы
-     * - убирает пустые объекты/массивы
+     * Minifies the animation JSON in place:
+     * - rounds numbers to the requested precision
+     * - removes properties that equal their Lottie defaults
+     * - collapses static animated keyframes into constant values
+     * - deletes empty objects and arrays
      */
     minifyLottieJson(json, options = {}) {
         const {
@@ -112,7 +113,6 @@ const Optimizer = {
             return false;
         };
 
-        // Рекурсивно обходит объект, округляет числа и удаляет дефолтные ключи
         function cleanObject(obj) {
             if (!obj || typeof obj !== 'object') return obj;
             if (Array.isArray(obj)) {
@@ -131,7 +131,6 @@ const Optimizer = {
             return obj;
         }
 
-        // Схлопывает статичные keyframes: если все ключи одинаковые, превращает в константу
         function collapseStaticKeyframes(animProp) {
             if (!animProp || typeof animProp !== 'object' || animProp.a === 0) return animProp;
             if (!Array.isArray(animProp.k) || animProp.k.length <= 1) return animProp;
@@ -149,7 +148,6 @@ const Optimizer = {
             return animProp;
         }
 
-        // Применяет collapse ко всем анимированным свойствам
         function processAnimProps(obj) {
             if (!obj || typeof obj !== 'object') return;
             if (Array.isArray(obj)) {
@@ -174,7 +172,6 @@ const Optimizer = {
             }
         }
 
-        // Удаляет пустые объекты и массивы
         function removeEmpty(obj) {
             if (!obj || typeof obj !== 'object') return;
             for (const key in obj) {
@@ -193,8 +190,10 @@ const Optimizer = {
         return json;
     },
     /**
-     * Запускает оптимизацию в Web Worker, чтобы не блокировать UI
-     * Если Worker не поддерживается или ошибка — падает на основном потоке
+     * Runs optimization in a Web Worker to keep the UI thread free
+     * Falls back to the main thread if Workers are not available or fail to start
+     * After the worker finishes, ty:3 VideoFrame assets in the preview are
+     * restored from the original data so the preview renders correctly
      */
     _runInWorker(data, options) {
         if (typeof Worker === 'undefined') {
@@ -225,7 +224,6 @@ const Optimizer = {
                         worker.terminate();
                         const lottieBlob = new Blob([msg.result.zipBuffer], {type: 'application/zip'});
                         const finalResult = {...msg.result, lottie: lottieBlob, zip: lottieBlob, zipBuffer: undefined};
-                        // восстанавливаем preview-кадры VideoFrame (ty:3) из оригинала
                         if (finalResult.preview?.assets && data.assets?.length) {
                             const origById = new Map(data.assets.map(a => [a.id, a]));
                             for (const pa of finalResult.preview.assets) {
@@ -252,8 +250,8 @@ const Optimizer = {
         });
     },
     /**
-     * Главный метод оптимизации Lottie-анимации
-     * Возвращает готовый .lottie файл, preview-данные, статистику
+     * Main optimization entry point. Parses the input, runs the full pipeline
+     * and returns the finished .lottie blob, preview data, and stats
      */
     async run(inputData, options = {}) {
         const {
@@ -269,14 +267,12 @@ const Optimizer = {
             jsonMinify = true,
             removeRedundantKeyframes = true,
         } = options;
-        // Парсим входные данные
         const parsed = await Optimizer.parseLottieInput(inputData);
         const data = parsed.data;
         const animId = _animId || parsed.animId;
         if (worker) return this._runInWorker(data, {...options, _animId: animId});
         const fps = videoFps ?? (data.fr || 24);
         const t0 = performance.now();
-        // Инициализируем внутренний контекст
         const ctx = this._initContext(data, animId, {
             fps,
             quality,
@@ -285,16 +281,11 @@ const Optimizer = {
             jsonPrecision,
             removeRedundantKeyframes
         });
-        // Анализируем ассеты: считаем размеры, форматы, находим последовательности
         await this._analyseAssets(ctx, onProgress);
-        // Если есть последовательности и включена конвертация – кодируем их в MP4
         if (convertToVideo && ctx.sequences.length > 0)
             await this._encodeSequences(ctx, onProgress);
-        // Обрабатываем одиночные изображения: дедупликация, конвертация в WebP
         await this._processImages(ctx, onProgress);
-        // Упаковываем результат в .lottie ZIP (JSON + картинки + видео)
         const {lottieBlob, finalJson} = await this._packZip(ctx, onProgress);
-        // финальная статистика
         this._finalizeStats(ctx, lottieBlob, finalJson, t0);
         onProgress({phase: 'done', message: 'Готово!', percent: 100});
 
@@ -310,7 +301,7 @@ const Optimizer = {
         };
     },
     /**
-     * Создаёт контекст оптимизации: копии данных, пустые коллекции, счётчики
+     * Builds the shared optimization context
      */
     _initContext(data, animId, opts) {
         const _cloneAssets = (src) => (src || []).map(a => structuredClone(a));
@@ -319,7 +310,6 @@ const Optimizer = {
         const assets = result.assets || [];
         const sequences = this.findSequences(assets);
         const candidateVideoIds = new Set(sequences.flatMap(s => s.ids));
-        // Кэш Blob для картинок, которые не входят в видео-последовательности
         const blobCache = new Map();
         for (const a of assets.filter(a => a.p?.startsWith('data:image') && a.id && !candidateVideoIds.has(a.id))) {
             const blob = ImageProcessor.decodeBase64(a.p);
@@ -355,13 +345,13 @@ const Optimizer = {
     },
 
     /**
-     * Анализирует все ассеты: считает размер, формат, общий объём
+     * Walks every asset, tallies sizes and formats, and populates stats.
+     * Video-sequence candidates are counted separately from standalone images
      */
     async _analyseAssets(ctx, onProgress) {
         const {assets, candidateVideoIds, blobCache, stats} = ctx;
         const t0 = performance.now();
         onProgress({phase: 'analysis', message: 'Загрузка ассетов...', percent: 2});
-        // Проходим по каждому ассету с картинкой
         await Promise.all(assets.map(async asset => {
             if (!asset.p?.startsWith('data:image')) return;
             stats.totalImages++;
@@ -405,8 +395,10 @@ const Optimizer = {
             });
     },
     /**
-     * Кодирует найденные последовательности кадров в MP4 через VideoEncoderUtil
-     * Если результат меньше оригиналов — сохраняет видео в архив
+     * Encodes each detected frame sequence into an MP4 via VideoEncoderUtil
+     * If the encoded video is larger than the original frames it is discarded
+     * On success, adds a VideoAsset (ty:2) entry and converts each frame asset
+     * to a VideoFrame (ty:3) referencing the video by vsid + timestamp
      */
     async _encodeSequences(ctx, onProgress) {
         const {
@@ -423,7 +415,6 @@ const Optimizer = {
         const assetById = new Map(assets.map(a => [a.id, a]));
         const t0 = performance.now();
         let videoCounter = 0;
-
         for (let si = 0; si < sequences.length; si++) {
             const seq = sequences[si];
             onProgress({
@@ -431,7 +422,6 @@ const Optimizer = {
                 message: `Видео ${si + 1}/${sequences.length}: ${seq.count} кадров`,
                 percent: 10 + Math.round(si / sequences.length * 40)
             });
-
             const frames = [];
             let originalSize = 0;
             for (const id of seq.ids) {
@@ -493,7 +483,6 @@ const Optimizer = {
                     videoFrameIds.add(id);
                     videoFrameSeqIndex.set(id, videoCounter);
                 });
-
                 const videoDetail = {
                     id: videoAssetId,
                     file: videoFile,
@@ -506,7 +495,6 @@ const Optimizer = {
                     compressionRatio: originalSize > 0 ? (videoResult.blob.size / originalSize * 100).toFixed(1) : 0,
                     encodingStats: videoResult.encodingStats,
                 };
-
                 zip.file(videoFile, videoResult.blob, {compression: 'STORE'});
                 videoAssets.push(videoDetail);
                 stats.videoDetails.push(videoDetail);
@@ -530,7 +518,9 @@ const Optimizer = {
         stats.phaseTiming.videoEncoding = stats.videoEncodingTime;
     },
     /**
-     * Обрабатывает одиночные изображения (не вошедшие в видео):
+     * Processes standalone images:
+     * deduplicates by SHA-256 hash, converts to WebP when smaller, and adds
+     * each unique file to the ZIP. Up to 8 images are processed in parallel
      */
     async _processImages(ctx, onProgress) {
         const {
@@ -567,7 +557,6 @@ const Optimizer = {
             const bytes = new Uint8Array(await blob.arrayBuffer());
             const hash = await ImageProcessor.hash(bytes);
 
-            // уже готово
             if (hashMap.has(hash)) {
                 const ref = hashMap.get(hash);
                 asset.u = 'images/';
@@ -579,7 +568,6 @@ const Optimizer = {
                 stats.duplicates++;
                 return;
             }
-            // параллельный дубликат — ждём первого
             if (processingMap.has(hash)) {
                 const ref = await processingMap.get(hash);
                 asset.u = 'images/';
@@ -628,7 +616,6 @@ const Optimizer = {
             previewAsset.e = 0;
         };
 
-        // 8 параллельных обработчиков
         const queue = [...candidates];
         await Promise.all(Array.from({length: Math.min(8, candidates.length)}, async () => {
             while (queue.length > 0) await processOne(queue.shift());
@@ -643,7 +630,8 @@ const Optimizer = {
     },
 
     /**
-     * Собирает итоговый .lottie архив
+     * Assembles the final .lottie ZIP: writes manifest, minified animation JSON,
+     * and any already-added image / video files, then compresses with DEFLATE
      */
     async _packZip(ctx, onProgress) {
         const {result, animId, zip, jsonMinify, jsonPrecision, removeRedundantKeyframes} = ctx;
@@ -669,11 +657,11 @@ const Optimizer = {
         return {lottieBlob, finalJson};
     },
     /**
-     * Подсчитывает финальную статистику: исходный размер, выигрыш, проценты
+     * Computes final stats: original vs optimized sizes, savings percentage,
+     * compression ratio, and total elapsed time
      */
     _finalizeStats(ctx, lottieBlob, finalJson, t0) {
         const {data, stats} = ctx;
-        // оцениваем исходный размер
         let origB64Len = 0;
         for (const a of data.assets || []) {
             if (a.p?.startsWith('data:')) {
@@ -681,7 +669,6 @@ const Optimizer = {
                 origB64Len += comma >= 0 ? Math.floor((a.p.length - comma - 1) * 0.75) : 0;
             }
         }
-
         stats.originalJsonSize = origB64Len + 50000;
         stats.optimizedJsonSize = new Blob([JSON.stringify(finalJson)]).size;
         stats.zipFileSize = lottieBlob.size;

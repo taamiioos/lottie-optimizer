@@ -1,11 +1,13 @@
 import {fmtTime, formatSize, statRow} from '../common/common.js';
 
+/** Renders a tree-style list of rows */
 const rows = (items) => items.map((item, i) =>
     statRow(i === items.length - 1 ? '└' : '├', item[0], item[1], item[2] || '')
 ).join('');
 
 /**
- * Рендерит полный блок статистики оптимизации в контейнер
+ * Renders the full optimization stats block into the given container
+ * Shows before/after sizes, phase timing bar, image and video breakdowns
  */
 export const renderStats = (container, stats, originalFileSize, animData) => {
     const lottieSize = stats.zipFileSize;

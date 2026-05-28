@@ -1,6 +1,9 @@
 import { $ } from '../common/common.js';
 
-// Создаёт Lottie-анимацию в контейнере
+/**
+ * Mounts a Lottie canvas animation into the given container
+ * Clears any existing content first
+ */
 export const createAnim = (container, data) => {
     container.innerHTML = '';
     return lottie.loadAnimation({
@@ -12,7 +15,11 @@ export const createAnim = (container, data) => {
         assetsPath:    '',
     });
 };
-// Создаёт панель настроек для одного слота
+
+/**
+ * Builds the per-slot settings panel
+ * Returns the DOM element and a readSettings() function to read current values
+ */
 export const createSlotSettings = (slotId, onApply) => {
     const container = document.createElement('div');
     container.className = 'slotSettings';
@@ -38,7 +45,11 @@ export const createSlotSettings = (slotId, onApply) => {
     return { el: container, readSettings };
 };
 
-// Инициализирует контролы воспроизведения для пары анимаций
+/**
+ * Wires up the playback controls for a before/after animation pair
+ * The scrubber and play/stop/speed/loop buttons all drive animAfter
+ * while animBefore is kept frame-locked to the same position
+ */
 export const setupDemoControls = (slot, animBefore, animAfter) => {
     const p = `dctrl-${slot}`;
     const controls = $(p);
@@ -62,7 +73,6 @@ export const setupDemoControls = (slot, animBefore, animAfter) => {
     animBefore.goToAndStop(0, true);
     animAfter.goToAndStop(0, true);
     animAfter.play();
-    // синхронизируем before с текущим кадром after
     animAfter.addEventListener('enterFrame', (e) => {
         if (scrubbing) return;
         const f = Math.floor(e.currentTime);

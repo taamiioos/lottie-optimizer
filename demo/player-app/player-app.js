@@ -11,34 +11,20 @@ import {
 initTheme();
 window.__toggleTheme = toggleTheme;
 
-// Глобальное состояние плеера
+/** Shared player state — one animation at a time */
 const state = {
     json: null,
     lottieBlob: null,
     anim: null,
-    preloadPromise: null,
-    preloaded: null,
 };
 
 /**
- * Обрабатывает выбранный пользователем файл
- * Cразу запускает предобработку в фоновом воркере — чтобы
- * к моменту нажатия Play видео-кадры уже были декодированы
+ * Handles a file selected or dropped by the user
  */
 const handleFile = async (file) => {
-    state.preloadPromise = null;
-    state.preloaded = null;
     if (file.name.endsWith('.lottie')) {
         state.lottieBlob = file;
         state.json = null;
-        if (typeof lottie !== 'undefined' && lottie.preloadAnimation) {
-            state.preloadPromise = lottie.preloadAnimation(file)
-                .then(json => {
-                    state.preloaded = json;
-                    return json;
-                })
-                .catch(() => null);
-        }
     } else {
         try {
             state.json = JSON.parse(await file.text());
@@ -54,7 +40,9 @@ const handleFile = async (file) => {
 };
 setupZone('zoneJson', 'jsonInput', handleFile);
 
-// Полностью сбрасывает плеер
+/**
+ * Destroys the current animation and resets all UI back to the initial state
+ */
 const resetPlayer = () => {
     if (state.anim) {
         state.anim.destroy();
@@ -62,8 +50,6 @@ const resetPlayer = () => {
     }
     state.json = null;
     state.lottieBlob = null;
-    state.preloadPromise = null;
-    state.preloaded = null;
     $('playerWrap').style.display = 'none';
     $('playerWrap').classList.remove('playing');
     $('playerPlaceholder').classList.remove('hidden');
@@ -75,14 +61,16 @@ const resetPlayer = () => {
     $('progressFill').classList.remove('done', 'error');
     $('btnPlay').disabled = true;
     $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Play</span>';
-
     resetZone();
     clearCompatStatus();
 };
 
 $('btnReset').addEventListener('click', resetPlayer);
 
-// Обработчик нажатия Play
+/**
+ * Play button handler. For .lottie files, unpacks and decodes the archive
+ * on click via lottie.preloadAnimation. Plain JSON is passed directly
+ */
 $('btnPlay').addEventListener('click', async () => {
     $('btnPlay').disabled = true;
     $('btnPlay').innerHTML = '<span>Loading...</span>';
@@ -99,12 +87,9 @@ $('btnPlay').addEventListener('click', async () => {
     $('playerControls').style.display = 'none';
     $('statsSection').style.display = 'none';
     let animationData;
-    if (state.preloaded) {
-        setProgress(90, 'Starting...');
-        animationData = state.preloaded;
-    } else if (state.preloadPromise) {
-        setProgress(20, 'Decoding video frames...');
-        animationData = await state.preloadPromise;
+    if (state.lottieBlob) {
+        setProgress(20, 'Decoding...');
+        animationData = await lottie.preloadAnimation(state.lottieBlob).catch(() => null);
         if (!animationData) {
             showError('Error loading animation');
             return;
@@ -121,7 +106,6 @@ $('btnPlay').addEventListener('click', async () => {
         autoplay: true,
         animationData,
     });
-
     state.anim.addEventListener('DOMLoaded', () => {
         const initialLoadTime = performance.now() - t0;
         $('progressFill').classList.add('done');
@@ -130,7 +114,6 @@ $('btnPlay').addEventListener('click', async () => {
             initialLoadTime: initialLoadTime,
             animData: state.anim.animationData,
         });
-
         setupControls(state.anim);
     });
     state.anim.addEventListener('data_failed', () => {
@@ -138,16 +121,18 @@ $('btnPlay').addEventListener('click', async () => {
     });
 });
 
-// Показывает ошибку в прогресс-баре и восстанавливает кнопку Play
+/** Shows an error in the progress bar and re-enables the Play button */
 const showError = (message) => {
     $('progressFill').classList.add('error');
     setProgress(100, message);
     $('btnPlay').disabled = false;
     $('btnPlay').innerHTML = '<span class="pl-play-icon">▶</span><span>Play</span>';
 };
+
 let _controlsAbort = null;
 
-// Привязывает контролы воспроизведения к экземпляру анимации
+/**
+ * Binds scrubber, play/pause/stop, speed and loop controls to the animation*/
 const setupControls = (anim) => {
     if (_controlsAbort) _controlsAbort.abort();
     _controlsAbort = new AbortController();
@@ -193,7 +178,6 @@ const setupControls = (anim) => {
         scrubbing = false;
         if (playing) anim.play();
     }, {signal});
-
     btnPause.addEventListener('click', () => {
         if (playing) {
             anim.pause();
@@ -212,9 +196,7 @@ const setupControls = (anim) => {
         updateLabel(0);
         btnPause.innerHTML = '▶';
     }, {signal});
-
     speedSel.addEventListener('change', () => anim.setSpeed(parseFloat(speedSel.value)), {signal});
-
     btnLoop.addEventListener('click', () => {
         looping = !looping;
         anim.setLoop(looping);
@@ -222,7 +204,9 @@ const setupControls = (anim) => {
     }, {signal});
 };
 
-// Рендерит блок статистики для загруженной анимации
+/**
+ * Renders the animation stats panel into the statsSection element
+ * */
 const renderStats = (s) => {
     const el = $('statsSection');
     el.style.display = '';
@@ -242,7 +226,6 @@ const renderStats = (s) => {
              <div class="statLabel">Initial Load</div>
              <div class="statValue">${fmtTime(s.initialLoadTime || 0)}</div>
            </div>`;
-
     if (w > 0) {
         html += `<div class="statBox">
                <div class="statLabel">Size</div>

@@ -414,7 +414,7 @@ body.light .theme-toggle:hover {
 .statLabel {
     font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
     color: var(--text-dim);
     margin-bottom: 2px;
 }

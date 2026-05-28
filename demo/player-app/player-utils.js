@@ -1,15 +1,13 @@
 import {$, formatSize} from '../common/common.js';
 
-/**
- * Устанавливает значение и подпись прогресс-бара
- */
+/** Sets the progress bar width and label text */
 export const setProgress = (pct, text) => {
     $('progressFill').style.width = pct + '%';
     $('progressLabel').textContent = text;
 };
 
 /**
- * Помечает зону загрузки как загруженную
+ * Marks the drop zone as loaded
  */
 export const markZoneLoaded = (filename, size) => {
     $('zoneJson').classList.add('loaded');
@@ -21,7 +19,7 @@ export const markZoneLoaded = (filename, size) => {
     sizeEl.style.display = '';
 };
 
-/** Сбрасывает зону загрузки в исходное состояние */
+/** Resets the drop zone back to its empty/initial state */
 export const resetZone = () => {
     $('zoneJson').classList.remove('loaded', 'drag');
     const hint = $('jsonHint');
@@ -31,7 +29,7 @@ export const resetZone = () => {
 };
 
 /**
- * Инициализирует dnd и клик для зоны загрузки файлов
+ * Wires up click and drag-and-drop events for a file drop zone
  */
 export const setupZone = (zoneId, inputId, onFile) => {
     const zone = $(zoneId);
@@ -56,7 +54,7 @@ export const setupZone = (zoneId, inputId, onFile) => {
 };
 
 /**
- * Показывает строку статуса совместимости файла
+ * Shows the file compatibility status badge with an icon
  */
 export const showCompatStatus = (type, message) => {
     const el = $('compatStatus');
@@ -65,7 +63,7 @@ export const showCompatStatus = (type, message) => {
     el.textContent = `${icon} ${message}`;
 };
 
-/** Скрывает строку статуса совместимости */
+/** Hides the compatibility status badge */
 export const clearCompatStatus = () => {
     const el = $('compatStatus');
     el.className = 'pl-compat-status';
